@@ -1,0 +1,21 @@
+---
+title: "Mortality Analysis"
+author: "Reed Decker"
+date: "2022-08-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Mortality Analysis
+For this analysis, we'll be looking at how causes of death have changed over the years based on age, gender, and ethnicity. All data is taken from the [CDC compressed mortality dataset for years 1999-2016](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death). 
+
+##
+
+Due to limitations on how many results the CDC Wonder page is able to give, I had to submit seperate queries for each ethnicity category. As such, my first step is to merge this back together into a single dataset.
+
+```{r load_merge}
+
+```
