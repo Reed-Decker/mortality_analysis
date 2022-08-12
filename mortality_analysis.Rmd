@@ -7,15 +7,101 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(rstudioapi)
+library(tidyverse)
+setwd(dirname(getActiveDocumentContext()$path))
 ```
 
-#Mortality Analysis
-For this analysis, we'll be looking at how causes of death have changed over the years based on age, gender, and ethnicity. All data is taken from the [CDC compressed mortality dataset for years 1999-2016](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death). 
+# Mortality Analysis
 
-##
+For this analysis, we'll be looking at how causes of death have changed over the years based on age, gender, and ethnicity. All data is taken from the [CDC compressed mortality dataset for years 1999-2016](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death).
 
-Due to limitations on how many results the CDC Wonder page is able to give, I had to submit seperate queries for each ethnicity category. As such, my first step is to merge this back together into a single dataset.
+Due to limitations on how many results the CDC Wonder page is able to give, I had to submit separate queries for each ethnicity category. As such, my first step is to merge this back together into a single dataset.
 
 ```{r load_merge}
+dat_american_indian <- read.delim(
+  "~/data_portfolio/mortality_analysis/mortality_1999-2016_american-indian.txt")
+dat_black<- read.delim(
+  "~/data_portfolio/mortality_analysis/mortality_1999-2016_black.txt")
+dat_asian <- read.delim(
+  "~/data_portfolio/mortality_analysis/mortality_1999-2016_asian.txt")
+dat_white <- read.delim(
+  "~/data_portfolio/mortality_analysis/mortality_1999-2016_white.txt")
+
+dat <- rbind(dat_american_indian, dat_black, dat_asian, dat_white)
+
+knitr::kable(head(dat))
+```
+
+I can see multiple issues with the dataset without going much further. The most concerning one is that many of our rows are actually totals of other rows in the same category, so any aggregate functions I do on the rows aren't going to have accurate results. I think the best way to deal with this is to simply delete every one of these "Totals" columns. If I need that information again later, I can generate it myself, after all.
+
+```{r remove_totals}
+dat <- subset(dat, Notes != "Total")
+```
+
+There are also multiple redundant columns. Year, Gender, Age.Group, ICD.Chapter, and Hispanic.Origin all have columns that append ".Code" to the end of their names. These columns contain the same information, but in a less readable format. For now, I'll keep the ".Code" versions of the information as these are shorter to type and display. The only exception is that I'll keep "Year" instead of "Year.Code" because the columns contain identical information, and I prefer the shorter variable name when possible. I'll also drop the "Notes" column as it no longer contains any information.
+
+Normally I'd want to make a note somewhere of what each code corresponds to, but the Gender and Age.Group codes are intuitive on their own, so for those I'll just note that the age group code of "1" is actually <1. 1-year-olds are in the "1-4" code instead. The ICD chapter codes are well documented elsewhere, so I'll include a link to their exact location in the data dictionary. There's only three codes for hispanic origin, so I'll make note of those directly in the comments.
+
+```{r remove_columns}
+# NOTE: Age code 1 is for ages < 1.
+# ICD 10 codes: https://wonder.cdc.gov/wonder/help/cmf.html#ICD-10%20Notes
+# Hispanic Origin Code: Hispanic or Latino = 2135-2
+# Hispanic Origin Code: Non-Hispanic or Latino = 2186-2
+# Hispanic Origin Code: NS = Not Stated
+
+dat <- subset(dat, select = -c(1, 3, 4, 6, 8, 10))
+```
+
+The next obvious issue is that the Crude Rate column has text alongside the crude rate to mark which entries are unreliable. This is because the CDC does not consider the crude rate estimate to be reliable if the death count was less than 20. I should be able to fix this by splitting this column into two, one for the crude rate and one for the reliability of the estimate.
+
+```{r split_crude_rate}
+dat <- dat %>% 
+  separate(Crude.Rate, 
+           c("Crude.Rate", "Crude.Rate.Reliability"), 
+           sep = " ") %>% 
+  mutate(Crude.Rate.Reliability = 
+           replace_na(Crude.Rate.Reliability, "(Reliable)"))
 
 ```
+
+There's a warning about missing pieces from the separate() function being filled with NA, but this is fine. If there's no "(Unreliable)" tag next to a value, then there's nothing to split, so the Crude.Rate.Reliability column gets filled with NA. However, the results of the separate() function are piped into a mutate() function that turns those NAs into "(Reliable)" tags, so the new column won't have NA values.  
+
+Before we convert the Crude.Rate column to be numeric, let's check to be sure the split operation worked correctly and we have only numeric values remaining in Crude.Rate.
+
+```{r check_numeric_Crude.Rate}
+length(grep("(^$)|([0-9])", dat$Crude.Rate, invert = TRUE))
+```
+
+There's a large number of non-numeric entries in Crude.Rate still. I decided to subset the non-numeric entries into a new dataframe to more easily examine what the cause behind this was.
+
+```{r subset_non_numeric}
+crude_non_numeric <- subset(
+  dat, 
+  subset = !grepl(
+    "(^$)|([0-9])", 
+    dat$Crude.Rate
+  )
+)
+
+head(crude_non_numeric)
+```
+
+It looks like when Hispanic.Origin is "Not Stated" but the death count is greater than 0, we get a "Not Applicable" result on the crude rate. A more thorough look at this dataframe also shows that this is the case if age is unstated but the death count is greater than 0. This allows for a pretty easy fix. I decided to mark all the relevant Crude.Rate values as 0.0, and tag these values as "(Not Applicable)" in Crude.Rate.Reliability. I don't plan on using the "Unreliable" or the "Not Applicable" crude rates later on, but we'll still differentiate between the two, just in case. 
+
+```{r fix_not_applicable}
+dat$Crude.Rate <- gsub("Not", "0.0", dat$Crude.Rate)
+dat$Crude.Rate.Reliability <- gsub(
+  "Applicable",
+  "(Not Applicable)",
+  dat$Crude.Rate.Reliability
+)
+```
+
+Next I checked for any additional non-numeric values.
+
+```{r}
+length(grep('(^$)|([0-9])', dat$Crude.Rate, invert = TRUE))
+```
+
+It looks like we should be able to convert Crude.Rate to float now.
