@@ -16,17 +16,20 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 For this analysis, we'll be looking at how causes of death have changed over the years based on age, gender, and ethnicity. All data is taken from the [CDC compressed mortality dataset for years 1999-2016](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death).
 
-Due to limitations on how many results the CDC Wonder page is able to give, I had to submit separate queries for each ethnicity category. As such, my first step is to merge this back together into a single dataset.
+Due to limitations on how many results the CDC Wonder page is able to give, I had to submit separate queries for each race category. As such, my first step is to merge this back together into a single dataset. Additionally, none of the original datasets contain a race column, so I add one into each dataset before merger.
 
 ```{r load_merge}
-dat_american_indian <- read.delim(
-  "~/data_portfolio/mortality_analysis/mortality_1999-2016_american-indian.txt")
-dat_black<- read.delim(
-  "~/data_portfolio/mortality_analysis/mortality_1999-2016_black.txt")
-dat_asian <- read.delim(
-  "~/data_portfolio/mortality_analysis/mortality_1999-2016_asian.txt")
-dat_white <- read.delim(
-  "~/data_portfolio/mortality_analysis/mortality_1999-2016_white.txt")
+dat_american_indian <- read.delim("mortality_1999-2016_american-indian.txt")
+dat_american_indian["Race"] <- 'American Indian or Alaska Native'
+
+dat_black <- read.delim("mortality_1999-2016_black.txt")
+dat_black["Race"] <- "Black or African American"
+
+dat_asian <- read.delim("mortality_1999-2016_asian.txt")
+dat_asian["Race"] <- "Asian or Pacific Islander"
+
+dat_white <- read.delim("mortality_1999-2016_white.txt")
+dat_white["Race"] <- "White"
 
 dat <- rbind(dat_american_indian, dat_black, dat_asian, dat_white)
 
@@ -104,4 +107,21 @@ Next I checked for any additional non-numeric values.
 length(grep('(^$)|([0-9])', dat$Crude.Rate, invert = TRUE))
 ```
 
-It looks like we should be able to convert Crude.Rate to float now.
+It looks like we should be able to convert Crude.Rate to float now. We can also tell that the Population column must be character, rather than integer, because it has several "Not Applicable" text values. With the crude rate I filled those with 0s, because we already had set up a way to filter out values we don't want, and it didn't risk breaking any packages by feeding them NA data. For population, however, we don't have as easy a way to filter out formerly NA values. I don't want to count NA populations as 0 either, because I think it might sway any averages on population I might want to do later. Instead, I think I'd like to just convert the "Not Applicable" strings into NA cells recognized by R. The easiest way to do this is to just convert the population column to integer. That should automatically turn all the character strings to NA. If this winds up being incompatible with some of our functions later on, we can work out a new solution, but for now this is faster and should allow us to avoid adding any additional columns. 
+
+Before we convert those two columns, let's see what the structure of the rest of the dataframe is like.
+
+```{r check_structure}
+str(dat)
+```
+
+It looks like our various code columns are already set to be factors, which is good, but Crude.Rate.Reliability and Race will also need to be set as factors. Year and Deaths make sense as integers to me, so we can leave those as they are, and we already know that Crude.Rate should be float, and Population should definitely be integer rather than factor. 
+
+```{r set_data_type}
+dat$Crude.Rate.Reliability <- as.factor(dat$Crude.Rate.Reliability)
+dat$Race <- as.factor(dat$Race)
+
+dat$Crude.Rate <- as.float(dat$Crude.Rate)
+
+dat$Population <- as.integer(dat$Population)
+```
