@@ -14,9 +14,11 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 # Mortality Analysis
 
-For this analysis, we'll be looking at how causes of death have changed over the years based on age, gender, and ethnicity. All data is taken from the [CDC compressed mortality dataset for years 1999-2016](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death).
+## Data Cleaning
 
-Due to limitations on how many results the CDC Wonder page is able to give, I had to submit separate queries for each race category. As such, my first step is to merge this back together into a single dataset. Additionally, none of the original datasets contain a race column, so I add one into each dataset before merger.
+For this analysis, I'll be looking at how causes of death have changed over the years based on age, gender, and ethnicity. All data is taken from the [CDC compressed mortality dataset for years 1999-2016](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death).
+
+The CDC Wonder page will only give out a maximum of 75,000 rows per query, so I wasn't able to submit a single query to collect all the data I wanted. Instead, I submited seperate queries for each race category. So the first thing I need to do is load in my data and merge the different dataframes together. None of the individual dataframes have a Race column, so I'll also have to add that in for each of them, with the appropriate values.
 
 ```{r load_merge}
 dat_american_indian <- read.delim("mortality_1999-2016_american-indian.txt")
@@ -42,21 +44,94 @@ I can see multiple issues with the dataset without going much further. The most 
 dat <- subset(dat, Notes != "Total")
 ```
 
-There are also multiple redundant columns. Year, Gender, Age.Group, ICD.Chapter, and Hispanic.Origin all have columns that append ".Code" to the end of their names. These columns contain the same information, but in a less readable format. For now, I'll keep the ".Code" versions of the information as these are shorter to type and display. The only exception is that I'll keep "Year" instead of "Year.Code" because the columns contain identical information, and I prefer the shorter variable name when possible. I'll also drop the "Notes" column as it no longer contains any information.
+There are also multiple redundant columns. Year, Gender, Age.Group, ICD.Chapter, and Hispanic.Origin all have columns that append ".Code" to the end of their names. These columns correlate perfectly with each other, so I don't need both of them. For the year, I'll keep the "Year" column, because the information in "Year" and "Year.Code" is identical, and I prefer to have a shorter variable name. For all the other ones, I'll keep the ".Code" version, however. The coded information is a lot shorter, so it'll be easier to work with and display when looking at the dataframe. Personally, I haven't memorized all the ICD 10 code chapters and the like, so I also want to make a vector containing the descriptive version of those codes. It should allow for much more readable graphs later on.
 
-Normally I'd want to make a note somewhere of what each code corresponds to, but the Gender and Age.Group codes are intuitive on their own, so for those I'll just note that the age group code of "1" is actually <1. 1-year-olds are in the "1-4" code instead. The ICD chapter codes are well documented elsewhere, so I'll include a link to their exact location in the data dictionary. There's only three codes for hispanic origin, so I'll make note of those directly in the comments.
+Before I make any vector keys, I want to check to make sure we don't have any empty or NA values in the columns I plan to make into keys. I may as well check the entire dataset, because I'm going to want to know about those anywhere in the data sooner or later.
+
+```{r check_NA}
+apply(dat, 2, function(x) sum(is.na(x)))
+```
+It looks like I have NA values in Year and Deaths, but nowhere else. It's the same number of NA values in each, so I think it's probably the same rows. Let's see if we can find out what's going on.
+
+```{r na_subset}
+year_na <- subset(dat, subset = is.na(dat$Year))
+
+head(year_na)
+```
+
+It looks like I have several rows that wound up with NA values in Year and Death, and just blank values in the other columns. I'll just remove the offending rows as they have no data, though I may want to examine the American Indian or Alaska Native dataframe later to work out where they came from.
+
+```{r remove_empty_rows}
+dat <- subset(dat, subset = !is.na(dat$Year))
+```
+
+With that done, I want to check if there's any other empty values in the dataset.
+
+```{r check_empty}
+apply(dat, 2, function(x) sum(x == ""))
+```
+
+It looks like the only empty cells I have are in the Notes column, and it looks like every cell in Notes is empty. That's good to know, because it means that this column really wasn't doing anything besides denoting which rows were totals. With all the totals gone, there's nothing else in that column that demands my attention and I can safely delete it. Outside that, it looks like we have no other empty values.
+
+Finally, I want to make sure the columns I plan on turning into vectors don't have any surprises in them. For example, I can already see that, while Population doesn't have any values that R considers to be NA, the words "Not Applicable" are written in several of the cells. I'll deal with that in a moment, but for now I want to make sure nothing similar happened to these cells. This should be simple enough to check. I just want to look at the unique values for all the columns I want to make into key vectors.
+
+```{R check_unique_vectors}
+unique(dat$Gender)
+unique(dat$Age.Group)
+unique(dat$ICD.Chapter)
+unique(dat$Hispanic.Origin)
+```
+It looks like there's nothing unexpected here, so I can go ahead and make a set of keys for each column. One issue is that the ICD chapter titles are far too long to use in any display format, so I'm going to have to simplify those, but I'll make the keys first.
+
+```{r make_vector_keys}
+gender_key <- unique(dat[, c("Gender.Code", "Gender")])
+age_key <- unique(dat[, c("Age.Group.Code", "Age.Group")])
+icd_key <- unique(dat[, c("ICD.Chapter.Code", "ICD.Chapter")])
+hispanic_key <- unique(dat[, c("Hispanic.Origin.Code", "Hispanic.Origin")])
+```
+
+It doesn't look like there's a single procedural method to trim down the names of the ICD chapters. I could get several of them to be much shorter if I trimmed off "Diseases of the" from the front, but it wouldn't work for most of them. I think the best way to handle this is just to rename those variables by hand. The end results will have to be highly simplified, so I'm going to want to make sure I have easy access to a resource that has the full details. Fortunately the [WHO website](https://icd.who.int/browse10/2010/en) has a handy resource on ICD codes.
+
+```{r trim_ICD_key}
+icd_key$ICD.Chapter <- c("Parasitic Diseases",
+                         "Neoplams",
+                         "Blood Diseases",
+                         "Endocrine Diseases",
+                         "Mental Disorders",
+                         "Nervous System Diseases",
+                         "Eye Diseases",
+                         "Ear Diseases",
+                         "Circulatory Diseases",
+                         "Respiratory Diseases",
+                         "Digestive Diseases",
+                         "Skin Diseases",
+                         "Muscular Diseases",
+                         "Genitourinary Diseases",
+                         "Pregnancy/Childbirth",
+                         "Perinatal Conditions",
+                         "Congenital Malformations",
+                         "Not Classified Elsewhere",
+                         "Special Purposes",
+                         "External Causes"
+                         )
+```
+
+Now that I've made sure I have all the information about what each code means somewhere, I can go ahead and delete the redundant columns, plus the Notes column.
 
 ```{r remove_columns}
-# NOTE: Age code 1 is for ages < 1.
-# ICD 10 codes: https://wonder.cdc.gov/wonder/help/cmf.html#ICD-10%20Notes
-# Hispanic Origin Code: Hispanic or Latino = 2135-2
-# Hispanic Origin Code: Non-Hispanic or Latino = 2186-2
-# Hispanic Origin Code: NS = Not Stated
-
 dat <- subset(dat, select = -c(1, 3, 4, 6, 8, 10))
 ```
 
-The next obvious issue is that the Crude Rate column has text alongside the crude rate to mark which entries are unreliable. This is because the CDC does not consider the crude rate estimate to be reliable if the death count was less than 20. I should be able to fix this by splitting this column into two, one for the crude rate and one for the reliability of the estimate.
+Now that I've removed NA and empty values, and taken out redundant columns, I want to check the structure of the remaining data.
+
+```{r check_structure}
+str(dat)
+```
+Here I have lots of problems with the data structure. The Year and Deaths columns should be fine as integer, but Gender.Code, Age.Group.Code, ICD.Chapter.Code, Hispanic.Origin.Code, and Race should all be factors, the Population column should be integer, and the Crude.Rate, having decimal values, should probably by numeric, which is the R equivilant to float (more or less). I didn't really need to call up the data structure to know that there would be issues with Population, and Crude.Rate though, as I could see that there were character values in what should have been a numeric column just by looking at the head of the dataframe.
+
+I'm going to start with the Crude.Rate column, as it's clear just from looking at the dataset documentation why this has happened. The CDC does not consider the crude rate estimate to be reliable if the death count was less than 20. One way to deal with this could be just to remove the text from the column and convert the remaining values to numeric. If I wanted to then make sure to remove all the unreliable values later during analysis, I could simply filter the Deaths column to only include values greater than 20.
+
+That being said, if I come back to this code later on, am I likely to remember to do that? And what about anyone else using this code? I could put a note about it in a comment, but that relies on people diligently reading all the comments. Instead, I think I want to split the Crude.Rate column into two different columns. One will be a numeric column containing the crude rate itself, and the other will be a factor stating if the crude rate value is reliable or unreliable. That should make it easy to filter the data, and it'll be immediately apparent to anyone looking at the data that not every crude rate can be considered reliable.
 
 ```{r split_crude_rate}
 dat <- dat %>% 
@@ -64,19 +139,27 @@ dat <- dat %>%
            c("Crude.Rate", "Crude.Rate.Reliability"), 
            sep = " ") %>% 
   mutate(Crude.Rate.Reliability = 
-           replace_na(Crude.Rate.Reliability, "(Reliable)"))
+           replace_na(Crude.Rate.Reliability, "Reliable"))
 
 ```
 
-There's a warning about missing pieces from the separate() function being filled with NA, but this is fine. If there's no "(Unreliable)" tag next to a value, then there's nothing to split, so the Crude.Rate.Reliability column gets filled with NA. However, the results of the separate() function are piped into a mutate() function that turns those NAs into "(Reliable)" tags, so the new column won't have NA values.  
+There's a warning about missing pieces from the separate() function being filled with NA, but this is fine. The reason I get that is because when there's no "(Unreliable)" tag next to a value, then there's nothing to split, so the Crude.Rate.Reliability column gets filled with NA. Because of this, I piped the results into a mutate() function that replaces all the NA values with "Reliable". Notice I didn't have parentheses around "Reliable". That's because we don't really need them now that we have two columns, and having them isn't consistant with the rest of the data. I'll delete them from the unreliable values as well.
 
-Before we convert the Crude.Rate column to be numeric, let's check to be sure the split operation worked correctly and we have only numeric values remaining in Crude.Rate.
+```{r delete_parenthesis}
+dat$Crude.Rate.Reliability <- gsub(
+  "(\\()|(\\))",
+  "", 
+  dat$Crude.Rate.Reliability
+)
+```
+
+That should sort out the issue, but I want to check that I have only numeric values remaining in Crude.Rate, so I'm going to count the number of non-numeric cells in the column.
 
 ```{r check_numeric_Crude.Rate}
 length(grep("(^$)|([0-9])", dat$Crude.Rate, invert = TRUE))
 ```
 
-There's a large number of non-numeric entries in Crude.Rate still. I decided to subset the non-numeric entries into a new dataframe to more easily examine what the cause behind this was.
+There's a large number of non-numeric entries in Crude.Rate still. I'll subset the non-numeric entries into a new dataframe so I can try and figure out what's causing this.
 
 ```{r subset_non_numeric}
 crude_non_numeric <- subset(
@@ -90,7 +173,7 @@ crude_non_numeric <- subset(
 head(crude_non_numeric)
 ```
 
-It looks like when Hispanic.Origin is "Not Stated" but the death count is greater than 0, we get a "Not Applicable" result on the crude rate. A more thorough look at this dataframe also shows that this is the case if age is unstated but the death count is greater than 0. This allows for a pretty easy fix. I decided to mark all the relevant Crude.Rate values as 0.0, and tag these values as "(Not Applicable)" in Crude.Rate.Reliability. I don't plan on using the "Unreliable" or the "Not Applicable" crude rates later on, but we'll still differentiate between the two, just in case. 
+It looks like when Hispanic.Origin is "Not Stated" but the death count is greater than 0, we get a "Not Applicable" result on the crude rate. A more thorough look at this dataframe also shows that this is the case if age is unstated but the death count is greater than 0. This allows for a pretty easy fix. I already have a column tracking if a value is reliable or unreliable, so it can also track if a value is technically NA. Then I can replace the NA values with "0.0". I'll be filtering for only reliable estimates if I use the Crude.Rate column, so that will also filter out the NA values.
 
 ```{r fix_not_applicable}
 dat$Crude.Rate <- gsub("Not", "0.0", dat$Crude.Rate)
@@ -101,27 +184,195 @@ dat$Crude.Rate.Reliability <- gsub(
 )
 ```
 
-Next I checked for any additional non-numeric values.
+With that sorted out, I want to check again that there aren't any *other* non-numeric values in my Crude.Rate column.
 
 ```{r}
 length(grep('(^$)|([0-9])', dat$Crude.Rate, invert = TRUE))
 ```
 
-It looks like we should be able to convert Crude.Rate to float now. We can also tell that the Population column must be character, rather than integer, because it has several "Not Applicable" text values. With the crude rate I filled those with 0s, because we already had set up a way to filter out values we don't want, and it didn't risk breaking any packages by feeding them NA data. For population, however, we don't have as easy a way to filter out formerly NA values. I don't want to count NA populations as 0 either, because I think it might sway any averages on population I might want to do later. Instead, I think I'd like to just convert the "Not Applicable" strings into NA cells recognized by R. The easiest way to do this is to just convert the population column to integer. That should automatically turn all the character strings to NA. If this winds up being incompatible with some of our functions later on, we can work out a new solution, but for now this is faster and should allow us to avoid adding any additional columns. 
+It looks like Crude.Rate is fixed and ready to convert to numeric. Next, I'll move on to the Population column. This column has a very similar issue to Crude.Rate, and the cause can likewise be found in the data documentation. When the age range or Hispanic origin is not stated, population isn't counted. That's actually why we get the Crude.Rate issue. When there's no deaths on an indetermenent number of people, we can easily say the rate of death in the population is 0. When there are some deaths, but we don't don't know how many people in the population there are, we can't work out what the death rate is.
 
-Before we convert those two columns, let's see what the structure of the rest of the dataframe is like.
+I could fix this similarly to the Crude.Rate column by replacing the character values with a filler value, like 0, and making a new column to reference which values were real and which are actually NA. I don't really want a new column just for that though. With Crude.Rate, it's possible, however unlikely, I might actually want the unreliable estimates for something, so it made sense to me to have a reference column where I could easily filter the data however I wanted. I never want to examine the NA values though, because they're completely without meaning. I could filter out those values based on age and Hispanic origin, but that again relies on the myself and other users remembering to do that.
 
-```{r check_structure}
-str(dat)
+Instead, I think I'll do the simplest thing to prepare that column for conversion: nothing. If I convert the column to integer, all the character cells will be automatically turned into NA values. Any functions I try to run on those NA values will either return an error, reminding me to filter the NAs, or else just exclude those values automatically.
+
+Before I do that, I want to make sure there aren't any character values in that column besides the "Not Applicable" text. If there's any other issues with some of the cells in this column, I may want to do something to fix it besides just make them into NA cells.
+
+```{r population_type_check}
+
+length(grep("([0-9])|(Not Applicable)", dat$Population, invert = TRUE))
+
+```
+There don't appear to be any other errors, so this column should also be ready to convert.
+
+There weren't any obvious issues with the other columns I planned to convert to factors, but I only looked at the first five rows of the dataset, so I want to check. I would be very surprised if there's any issues here. For the columns ending in ".Code" I already examined a set of columns that should match up to them perfectly. The Race column is also one I generated myself, so there shouldn't be any surprises in it. It never hurts to be careful though.
+
+```{R check_unique_factors}
+unique(dat$Gender.Code)
+unique(dat$Age.Group.Code)
+unique(dat$ICD.Chapter.Code)
+unique(dat$Hispanic.Origin.Code)
+unique(dat$Race)
 ```
 
-It looks like our various code columns are already set to be factors, which is good, but Crude.Rate.Reliability and Race will also need to be set as factors. Year and Deaths make sense as integers to me, so we can leave those as they are, and we already know that Crude.Rate should be float, and Population should definitely be integer rather than factor. 
+There's no unexpected values in any of our prospective factors, so everything is ready to be converted to the appropriate data type. When I made the Crude.Rate.Reliability column, I didn't specify it as a factor, so I should do that here as well.
 
-```{r set_data_type}
-dat$Crude.Rate.Reliability <- as.factor(dat$Crude.Rate.Reliability)
-dat$Race <- as.factor(dat$Race)
+```{r convert data types}
+factors <- c ("Gender.Code", 
+             "Age.Group.Code",
+             "ICD.Chapter.Code",
+             "Hispanic.Origin.Code",
+             "Crude.Rate.Reliability",
+             "Race")
 
-dat$Crude.Rate <- as.float(dat$Crude.Rate)
+dat[,factors] <- lapply(dat[,factors],
+                        factor)
+
+dat$Crude.Rate <- as.numeric(dat$Crude.Rate)
 
 dat$Population <- as.integer(dat$Population)
+
+```
+
+I get a message that NAs were introduced, but I expected that from the Population column. Still, I'll go ahead and count how many NA values we have in each row one last time, just in case anything strange happened.
+
+```{r}
+apply(dat, 2, function(x) sum(is.na(x)))
+```
+
+The only NA values are right where I expected them to be, so with that it looks like the data is ready for analysis!
+
+## Exploritory Analysis
+
+### What are the leading causes of death from 1999 to 2016?
+
+Before we start to look deeper into the dataset, I want to know what the biggest overall causes of death in our dataset are. This should be a pretty simple case of summing up the deaths for each ICD chapter code in our dataset. I suspect the differences for some of these categories would make it almost impossible to fit a good y axis on a graph, so for now, I just want a list.
+
+```{r total_deaths_by_cause}
+total_deaths <- dat %>%
+  left_join(icd_key, by = c("ICD.Chapter.Code" = "ICD.Chapter.Code")) %>%
+  group_by(ICD.Chapter.Code, ICD.Chapter) %>%
+  summarise(Deaths = sum(Deaths)) %>%
+  arrange(desc(Deaths))
+
+print(total_deaths)
+```
+Diseases of the circulatory system and neoplasms lead the other top causes of death by an order of magnitude. This isn't too surprising, as those are the causes of death that include cancer and heart attacks. Our least common causes of death include diseases of the eye, ears, deaths from codes reserved for special purposes, pregnancy and childbirth, and skin diseases. 
+
+### Have the leading causes of death changed?
+
+Now we know the overall leading causes of death, have medical advancements changed these death rates at all over time? Because the population has also changed from year to year, instead of looking at raw deaths, I want to graph this by rate of death.
+
+```{r cause_by_year}
+death_cause <- c("I00-I99", "C00-D48")
+
+filter(dat, 
+       ICD.Chapter.Code %in% death_cause & 
+         !is.na(Population)) %>%
+  group_by(ICD.Chapter.Code, Year) %>%
+  summarise(Death_Rate = (sum(Deaths)/sum(Population)) * 1000) %>%
+  ggplot(
+    aes(
+      x = Year, 
+      y = Death_Rate, 
+      group_by = ICD.Chapter.Code, 
+      color = ICD.Chapter.Code, 
+      )
+  ) +
+  geom_line() +
+  ylab("Crude Death Rate") +
+  labs(title = "Top Causes of Death Over Time") +
+  scale_color_discrete(
+    labels = icd_key$ICD.Chapter[
+      icd_key$ICD.Chapter.Code %in% death_cause
+      ]
+    )
+```
+There's an overall decline for both causes, but it's much steeper for circulatory diseases than neoplasms.
+
+### Is the decline in leading causes of death the same across races?
+
+```{r lead_death_by_race}
+filter(dat, 
+       ICD.Chapter.Code %in% death_cause & 
+         !is.na(Population)) %>%
+  group_by(ICD.Chapter.Code, Year, Race) %>%
+  summarise(Death_Rate = (sum(Deaths)/sum(Population)) * 1000) %>%
+  ggplot(
+    aes(
+    x = Year, 
+    y = Death_Rate, 
+    linetype = ICD.Chapter.Code,
+    color = Race
+    )
+  ) +
+  geom_line() +
+  ylab("Crude Death Rate") +
+  labs(title = "Top Causes of Death Over Time by Race") +
+    scale_linetype_discrete(
+    labels = icd_key$ICD.Chapter[
+      icd_key$ICD.Chapter.Code %in% death_cause
+      ]
+    )
+```
+The overall trend is the same for all races, but the death rate is lower for white people compared to other racial groups, and it appears to be the highest for American Indians and Alaskan Natives, especially for neoplasms. There's also a spike in death rate for Asian people and Pacific Islanders between about 2001 and 2005 that might be worth further investigation. 
+
+### How have common causes of death changed over time?
+
+Outside of the top two leading causes of death, we have several causes of death that total in the millions across the time-scale we're examining. As before, I don't want to look at deaths that are in a lower order of magnitude, but we can look at deaths in the millions. 
+
+```{r common_cause_by_year}
+death_cause <- total_deaths$ICD.Chapter.Code[
+  which(
+    total_deaths$Deaths > 999999 & 
+      total_deaths$Deaths < 10000000
+    )
+]
+
+filter(dat, 
+       ICD.Chapter.Code %in% death_cause & 
+         !is.na(Population)) %>%
+  group_by(ICD.Chapter.Code, Year) %>%
+  summarise(Death_Rate = (sum(Deaths)/sum(Population)) * 1000) %>%
+  ggplot(
+    aes(
+      x = Year, 
+      y = Death_Rate, 
+      color = ICD.Chapter.Code,
+      linetype = ICD.Chapter.Code
+      )
+  ) +
+  geom_line() +
+  ylab("Crude Death Rate") +
+  labs(title = "Common Causes of Death Over Time") +
+  scale_color_discrete(
+    labels = icd_key$ICD.Chapter[
+      icd_key$ICD.Chapter.Code %in% death_cause
+      ]
+    ) +
+    scale_linetype_discrete(
+    labels = icd_key$ICD.Chapter[
+      icd_key$ICD.Chapter.Code %in% death_cause
+      ]
+    )
+```
+
+Most of these death rates are fairly steady over time, but deaths due to nervous system diseases and mental disorders show a general trend of increasing. For mental disorders the peak is around 2011 before there's a decline again. Unfortunately the present dataset doesn't have the exact causes of death, as it'd be interesting to see if there's a decline in a particular subcategory that accounts for this. What we can do, however, is break it down by age, gender, and race. If the decline is due to improvements in mental health treatment, it may not affect each race equally. Additionally, some mental disorders, such as depression, are known to be more common in women than men. Finally, we can see if these issues disproportionately affect certain age groups.
+
+```{r mental_disorder_breakdown}
+
+filter(dat, ICD.Chapter.Code == "F01-F99"
+       & !is.na(Population)) %>%
+  group_by(ICD.Chapter.Code, Year, Race) %>%
+  summarise(Death_Rate = (sum(Deaths)/sum(Population))) %>%
+  ggplot(
+    aes(
+      x = Year, 
+      y = Death_Rate, 
+      color = Race,
+      )
+  ) +
+  geom_line() +
+  ylab("Crude Death Rate") +
+  labs(title = "Deaths by Mental Disorder") 
 ```
