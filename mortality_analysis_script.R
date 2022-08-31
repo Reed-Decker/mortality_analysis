@@ -1,6 +1,11 @@
 # Setup ----
+library(renv)
+library(rstudioapi)
 library(tidyverse)
-setwd("C://Users/user/Documents/data_portfolio/mortality_analysis")
+
+renv::restore()
+
+setwd(dirname(getActiveDocumentContext()$path))
 
 df <- read.delim("mortality_1999-2016.txt")
 
@@ -177,6 +182,7 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   age_adjust(ICD.Chapter.Code, Year) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Chapter.Code)) +
   geom_line() +
+  geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Top Causes of Death Over Time") +
   scale_color_discrete(
@@ -190,11 +196,19 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
 
 filter(df, ICD.Chapter.Code %in% death_cause) %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code) %>%
-  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, linetype = ICD.Chapter.Code, color = Race.Code)) +
+  ggplot(
+    aes(
+      x = Year,
+      y = Crude.Rate.Adjusted,
+      shape = ICD.Chapter.Code,
+      color = Race.Code
+    )
+  ) +
   geom_line() +
+  geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Top Causes of Death Over Time") +
-  scale_linetype_discrete(
+  scale_shape_discrete(
     labels = icd_key$ICD.Chapter[
       icd_key$ICD.Chapter.Code %in% death_cause
     ],
