@@ -3,9 +3,9 @@ library(renv)
 library(rstudioapi)
 library(tidyverse)
 
-renv::restore()
-
 setwd(dirname(getActiveDocumentContext()$path))
+
+renv::restore()
 
 df <- read.delim("mortality_1999-2016.txt")
 
