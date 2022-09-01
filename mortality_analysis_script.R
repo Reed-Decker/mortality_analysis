@@ -262,3 +262,14 @@ filter(df, ICD.Chapter.Code == "F01-F99") %>%
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Deaths from Mental Illness by Race") +
   scale_color_discrete(labels = race_key$Race, name = "Race")
+
+# Mental disorders by race and gender
+
+filter(df, ICD.Chapter.Code == "F01-F99") %>%
+  age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from Mental Illness by Race") +
+  scale_color_discrete(labels = race_key$Race, name = "Race")
