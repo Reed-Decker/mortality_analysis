@@ -1,11 +1,9 @@
 # Setup ----
-library(renv)
 library(rstudioapi)
-library(tidyverse)
-
-renv::restore()
-
 setwd(dirname(getActiveDocumentContext()$path))
+renv::restore()
+library(renv)
+library(tidyverse)
 
 df <- read.delim("mortality_1999-2016.txt")
 
@@ -261,4 +259,50 @@ filter(df, ICD.Chapter.Code == "F01-F99") %>%
   geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Deaths from Mental Illness by Race") +
+  scale_color_discrete(labels = race_key$Race, name = "Race")
+
+# Mental disorders by gender
+
+filter(df, ICD.Chapter.Code == "F01-F99") %>%
+  age_adjust(ICD.Chapter.Code, Year, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Gender.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from Mental Illness by Race") +
+  scale_color_discrete(labels = gender_key$Gender, name = "Gender")
+
+# Mental disorders by gender and race
+
+filter(df, ICD.Chapter.Code == "F01-F99") %>%
+  age_adjust(ICD.Chapter.Code, Year, Gender.Code, Race.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from Mental Illness by Race and Gender") +
+  scale_color_discrete(labels = race_key$Race, name = "Race") +
+  scale_shape_discrete(labels = gender_key$Gender, name = "Gender")
+
+# External causes by race and gender
+
+filter(df, ICD.Chapter.Code == "V01-Y89") %>%
+  age_adjust(ICD.Chapter.Code, Year, Gender.Code, Race.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from External Causes by Race and Gender") +
+  scale_color_discrete(labels = race_key$Race, name = "Race") +
+  scale_shape_discrete(labels = gender_key$Gender, name = "Gender")
+
+# Pregnancy and childbirth by race and gender
+
+filter(df, ICD.Chapter.Code == "O00-O99")%>%
+  age_adjust(ICD.Chapter.Code, Year, Race.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from Pregnancy/Childbirth by Race and Gender") +
   scale_color_discrete(labels = race_key$Race, name = "Race")
