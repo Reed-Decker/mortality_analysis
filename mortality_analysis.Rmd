@@ -1,24 +1,21 @@
 ---
 title: "Mortality Analysis"
 author: "Reed Decker"
-date: "2022-08-08"
+date: "2022-09-05"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(renv)
 library(rstudioapi)
-library(tidyverse)
-
 setwd(dirname(getActiveDocumentContext()$path))
-
 renv::restore()
+library(tidyverse)
 ```
 
 # Mortality Analysis
 
-Recently in conversation, a relative mentioned anecdotal how heart complications seemed to be getting more and more treatable, and cited several examples of heart-attack victims she knew who had made successful recoveries from things that would have almost certainly been death sentences once. I thought this was interesting, but it made me wonder, how much better has medicine gotten at treating other illnesses? I've also heard lots of horror stories from women and racial minorities about their struggles with the healthcare system, and how things that turned out to be serious medical issues were dismissed for years as minor problems that were being exaggerated. With that being the case, along with differing levels of access to proper medical care and other issues, I don't expect that the improvements in treatment will have been equal for everyone. I decided to take a closer look at this issue. 
+Recently in conversation, a relative mentioned anecdotal how heart complications seemed to be getting more and more treatable, and cited several examples of heart-attack victims she knew who had made successful recoveries from things that would have almost certainly been death sentences once. I thought this was interesting, but it made me wonder, how much better has medicine gotten at treating other illnesses? I've also heard lots of horror stories from women and racial minorities about their struggles with the healthcare system, and how things that turned out to be serious medical issues were dismissed for years as minor problems that were being exaggerated. With that being the case, along with differing levels of access to proper medical care and other issues, I don't expect that the improvements in treatment will have been equal for everyone. I decided to take a closer look at this issue.
 
 To start with, I went to the [CDC compressed mortality dataset](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death). There are multiple databases to query, split by which version of the International Classification of Diseases (ICD) was being used at the time. I decided I was most interested in recent data, and so queried the 1999-2016 database, which uses the ICD-10. The exact query submitted can be found [here](https://wonder.cdc.gov/controller/datarequest/D140;jsessionid=AC9340EB8DF6C5C7E53DEA47834A)
 
@@ -47,6 +44,7 @@ There's also some problems with redundant or unneeded columns. Before I get into
 ```{r check_NA}
 apply(df, 2, function(x) sum(is.na(x)))
 ```
+
 It looks like I have NA values in Year and Deaths, but nowhere else. It's the same number of NA values in each, so I think it's probably the same rows. Let's see if we can find out what's going on.
 
 ```{r na_subset}
@@ -89,7 +87,8 @@ unique(df$Gender.Code)
 unique(df$Race)
 unique(df$Race.Code)
 ```
-Most of these look fine, but there's a Not Stated category for age. This is a problem because the CDC doesn't count population for Not Stated categories. This is probably why the Population column is a character string instead of an integer. It's likely that the Population values in our dataset for the "Not Stated" ages contain a string like "Not Applicable" or something similar. 
+
+Most of these look fine, but there's a Not Stated category for age. This is a problem because the CDC doesn't count population for Not Stated categories. This is probably why the Population column is a character string instead of an integer. It's likely that the Population values in our dataset for the "Not Stated" ages contain a string like "Not Applicable" or something similar.
 
 Fortunately the dataset documentation tells us that the CDC ignores these "Not Stated" values when calculating the age adjusted mortality rate, so I'll do the same and, once again, remove the unwanted rows from the dataframe, then convert the desired columns to factors.
 
@@ -111,13 +110,14 @@ Next I want Population to be an integer. Hopefully when I filtered out the "Not 
 ```{r check_non_numeric}
 length(grep("(^$)|([0-9])", df$Population, invert = TRUE))
 ```
+
 Fantastic! The column should convert to integer without producing any issues.
 
 ```{r make_integer}
 df$Population <- as.integer(df$Population)
 ```
 
-Normally I'd also want to make the Crude.Rate column numeric. However, I'm actually going to want to calculate these rates myself. For example, if I'm making a figure where I split the data by race, but not gender, the crude rates given here won't work. However, the crude rate here is calculated by the formula "(Deaths * 100,000) / Population" so I have the information I need to obtain the crude rate for any section of the population I want without this column, so I'll delete this column along with the other unneeded ones later on.
+Normally I'd also want to make the Crude.Rate column numeric. However, I'm actually going to want to calculate these rates myself. For example, if I'm making a figure where I split the data by race, but not gender, the crude rates given here won't work. However, the crude rate here is calculated by the formula "(Deaths \* 100,000) / Population" so I have the information I need to obtain the crude rate for any section of the population I want without this column, so I'll delete this column along with the other unneeded ones later on.
 
 For now, I mentioned I wanted to do something about the redundant columns. For example, contain the same information, it's just that ICD.Chapter is the full chapter label, while ICD.Chapter.Code is a much briefer description of what specific cause of death codes are in each chapter. In general, I don't want to delete either of these columns. The ICD.Chapter.Code column is much shorter and will be a lot easier to work with via code. However, when visualizing the data, I'll want more descriptive labels. Instead of deleting these columns outright, I'm going to set up a relational structure by making several new dataframes which match the code to the description for each relevant column. Then I'll delete the longer descriptions from the main dataframe, secure in the knowledge that I can bring them back whenever I want.
 
@@ -233,7 +233,8 @@ total_deaths <- df %>%
 
 print(total_deaths)
 ```
-Diseases of the circulatory system and neoplasms lead the other top causes of death by an order of magnitude. This isn't too surprising, as those are the chapters that include cancer and heart disease. Our least common causes of death include diseases of the eye, ears, deaths from codes reserved for special purposes, pregnancy and childbirth, and skin diseases. I'm actually quite surprised to see pregnancy and childbirth as low on the list as they are, given how dangerous childbirth has historically been. 
+
+Diseases of the circulatory system and neoplasms lead the other top causes of death by an order of magnitude. This isn't too surprising, as those are the chapters that include cancer and heart disease. Our least common causes of death include diseases of the eye, ears, deaths from codes reserved for special purposes, pregnancy and childbirth, and skin diseases. I'm actually quite surprised to see pregnancy and childbirth as low on the list as they are, given how dangerous childbirth has historically been.
 
 ### Have the leading causes of death changed?
 
@@ -257,6 +258,9 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
     name = "Cause of Death"
   )
 ```
+
+
+
 There's an overall decline for both causes, but it's much steeper for circulatory diseases than neoplasms. The decline for neoplasms is impressively linear. I wouldn't normally expect to see such a steady and consistent decline in real-world data. By contrast the slope on the neoplasms appears to be steeper, but less consistent, though it still looks reasonably linear to eyeball it.
 
 ### Is the decline in leading causes of death the same across gender and race?
@@ -289,7 +293,8 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   ) +
  scale_color_discrete(labels = gender_key$Gender, name = "Gender")
 ```
-The trends are the same for both men and women, though the overall rate is lower for women in both groups. While I had suggested earlier that issues women have with health care providers might lead to differences, it's probably not too surprising that women have a lower mortality rate here. In general women tend to be more willing to see health care providers, so that could well lead to a lower mortality rate, especially when it comes to very common causes of death that are likely to be screened for and taken seriously. 
+
+The trends are the same for both men and women, though the overall rate is lower for women in both groups. While I had suggested earlier that issues women have with health care providers might lead to differences, it's probably not too surprising that women have a lower mortality rate here. In general women tend to be more willing to see health care providers, so that could well lead to a lower mortality rate, especially when it comes to very common causes of death that are likely to be screened for and taken seriously.
 
 Next, let's look at race and see if there are any changes.
 
@@ -319,7 +324,10 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   ) +
   scale_color_discrete(labels = race_key$Race, name = "Race")
 ```
+
 Unsurprisingly, given white people tend to have better access to health care, they also have the lowest death rates for both ICD codes. What's more interesting, however, is how the difference in rate between neoplasms and circulatory diseases changes between races. For white people, the death rate from circulatory disease has fallen over the years to the point where it's no longer dramatically higher. For people in the Asian or Pacific Islander categories, however, the death rate for circulatory diseases is still massively greater than for neoplasms, even in 2016. The actual slopes for each race look about the same, however, so it doesn't seem like changes in medicine over this time period disproportionately affected white people more than other races, but at the same time the factors causing non-white people to have higher overall death rates don't seem to have been improved either.
+
+### Have common causes of death changed over time?
 
 ```{r common_cause_by_year}
 death_cause <- total_deaths$ICD.Chapter.Code[
@@ -357,22 +365,44 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   )
 ```
 
-Most of these death rates are fairly steady over time, but deaths due to nervous system diseases and mental disorders show a general trend of increasing. For mental disorders the peak is around 2011 before there's a decline again. Unfortunately the present dataset doesn't have the exact causes of death, as it'd be interesting to see if there's a decline in a particular subcategory that accounts for this. What we can do, however, is break it down by age, gender, and race. If the decline is due to improvements in mental health treatment, it may not affect each race equally. Additionally, some mental disorders, such as depression, are known to be more common in women than men. Finally, we can see if these issues disproportionately affect certain age groups.
+Most of these death rates are fairly steady over time, but deaths due to nervous system diseases and mental disorders show a general trend of increasing, and there's a spike in deaths by external causes around 2014-2015. Coming from a psychology background, I'm most interested here in the deaths from mental disorders, which suddenly start to decline around 2013. Again, I think I'd be useful to break this down by race and gender to see if the trend is coming from any particular segment of the population.
+
+#### Do deaths by mental disorder differ by race and gender?
 
 ```{r mental_disorder_breakdown}
-
-filter(dat, ICD.Chapter.Code == "F01-F99"
-       & !is.na(Population)) %>%
-  group_by(ICD.Chapter.Code, Year, Race) %>%
-  summarise(Death_Rate = (sum(Deaths)/sum(Population))) %>%
-  ggplot(
-    aes(
-      x = Year, 
-      y = Death_Rate, 
-      color = Race,
-      )
-  ) +
+filter(df, ICD.Chapter.Code == "F01-F99") %>%
+  age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
   geom_line() +
-  ylab("Crude Death Rate") +
-  labs(title = "Deaths by Mental Disorder") 
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from Mental Disorder by Race and Gender") +
+  scale_color_discrete(labels = race_key$Race, name = "Race") +
+  scale_shape_discrete(labels = gender_key$Gender, name = "Gender")
 ```
+
+As it happens, there are a lot of interesting elements in this figure. In general women are more likely to report suffering from mental illness than men, but in terms of death from mental disorder, it looks like men who are Asian or Pacific Islanders have higher death rates from mental illness than women. The same is true for American Indians and Alaska Natives. For Black or African American people, the death rate from mental illness for men and women is about the same until 2005, where the death rate for women starts to rise more rapidly than for men. Around 2010 we see something similar for white people, where the death rate for women grows over that of men for a time. This increase is most notable for white people, but the death rate for women from mental illness seems to increases, compared to the male death rate, for all races around this time. However, death from mental disease is a fairly broad category. I suspect that answers to exactly what is going on here might be clearer if we looked at the individual causes of death. I don't have those as part of the present dataset, but I can query that data for another analysis.
+
+Finally I want to look into that external cause of death spike we saw.
+
+#### Do deaths by external causes differ by race and gender?
+
+```{r external_cause_breakdown}
+filter(df, ICD.Chapter.Code == "V01-Y89") %>%
+  age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from External Causes by Race and Gender") +
+  scale_color_discrete(labels = race_key$Race, name = "Race") +
+  scale_shape_discrete(labels = gender_key$Gender, name = "Gender")
+```
+
+From this figure we can see that the spike in deaths from external causes is almost entirely accounted for by non-white men. Non-white men not only have higher death rates from external causes overall, but the sudden increase from around 2014 doesn't happen for women, or white men. Again, it's hard to say exactly why this happens from the data we have, but a clear trend is visible.
+
+## Summary
+
+From this dataset, it's clear to see that, in spite of improvements in medicine over the past 20 odd years, there is still a fair deal of racial and gender-based inequality when it comes to causes of mortality. We also do see increases in death rates for certain kinds of death. However, it should be noted that every dies of something eventually. A decrease in deaths from neoplasms and heart disease might lead to an increase in death by mental disorder, as people who previously would have died from heart attack of cancer find themselves living long enough to die of dementia or other age-related causes that fall under the umbrella of mental disease.
+
+While I wasn't able to get detailed information about these trends from the current dataset, I've also narrowed down questions for further examination. It would be more convienient to have all the causes of death in this dataset, rather than having to query for more information. However, the CDC portal only allows for 75,000 results at a time, so using a general dataset to narrow down more specific questions to query is worth the effort, as it saves the time of having to send and merge a massive number of queries to obtain information on all individual causes of death for all races and genders in every age group across all years.
