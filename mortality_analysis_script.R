@@ -1,9 +1,14 @@
 # Setup ----
-library(renv)
 library(rstudioapi)
+<<<<<<< HEAD
 library(tidyverse)
 
+=======
+>>>>>>> bb5b39c4006238045749a3667d5494d726843226
 setwd(dirname(getActiveDocumentContext()$path))
+renv::restore()
+library(renv)
+library(tidyverse)
 
 renv::restore()
 
