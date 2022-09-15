@@ -1,33 +1,58 @@
 # Setup ----
 library(rstudioapi)
-<<<<<<< HEAD
 library(tidyverse)
 
-=======
->>>>>>> bb5b39c4006238045749a3667d5494d726843226
 setwd(dirname(getActiveDocumentContext()$path))
-renv::restore()
-library(renv)
-library(tidyverse)
 
-renv::restore()
+df_1     <- read.delim("mortality_1999-2016_1.txt")
+df_1_4   <- read.delim("mortality_1999-2016_1-4.txt")
+df_5_9   <- read.delim("mortality_1999-2016_5-9.txt")
+df_10_14 <- read.delim("mortality_1999-2016_10-14.txt")
+df_15_19 <- read.delim("mortality_1999-2016_15-19.txt")
+df_20_24 <- read.delim("mortality_1999-2016_20-24.txt")
+df_25_34 <- read.delim("mortality_1999-2016_25-34.txt")
+df_35_44 <- read.delim("mortality_1999-2016_35-44.txt")
+df_35_44 <- read.delim("mortality_1999-2016_35-44.txt")
+df_45_54 <- read.delim("mortality_1999-2016_45-54.txt")
+df_55_64 <- read.delim("mortality_1999-2016_55-64.txt")
+df_65_74 <- read.delim("mortality_1999-2016_65-74.txt")
+df_75_84 <- read.delim("mortality_1999-2016_75-84.txt")
+df_85    <- read.delim("mortality_1999-2016_85+.txt")
 
-df <- read.delim("mortality_1999-2016.txt")
+df <- rbind(df_1, 
+            df_1_4, 
+            df_5_9, 
+            df_10_14, 
+            df_15_19, 
+            df_20_24, 
+            df_25_34, 
+            df_35_44,
+            df_45_54,
+            df_55_64,
+            df_65_74,
+            df_75_84,
+            df_85)
 
 # Data Cleaning ----
-
-# Remove columns with the "Total" value
-df <- subset(df, Notes != "Total")
 
 # Check for NA values
 apply(df, 2, function(x) sum(is.na(x)))
 
-# Create new dataframe to examine cause of NA values
+# Create new dataframe to examine cause of NA Age Group values
+age_group_na <- subset(df, subset = is.na(df$Age.Group.Code))
+
+head(age_group_na)
+
+# Remove NA Age Group values
+
+df <- subset(df, subset = !is.na(df$Age.Group.Code))
+
+# Create new dataframe to examine cause of NA Year values
 year_na <- subset(df, subset = is.na(df$Year))
 
 head(year_na)
 
-# Remove NA values
+# Remove NA Year values
 
 df <- subset(df, subset = !is.na(df$Year))
 
@@ -43,10 +68,40 @@ dim(df)
 
 str(df)
 
+# Make index of icd chapters and chapter codes, then make columns for range of each chapter
+
+sub_chapter_start <- substr(df$ICD.Sub.Chapter.Code, 1, 3)
+
+df <- df %>% mutate(ICD.Chapter.Code = case_when(
+  sub_chapter_start >= "A00" & sub_chapter_start <= "B99" ~ "A01-B99",
+  sub_chapter_start >= "C00" & sub_chapter_start <= "D48" ~ "C00-D48",
+  sub_chapter_start >= "D50" & sub_chapter_start <= "D89" ~ "D50-D89",
+  sub_chapter_start >= "E00" & sub_chapter_start <= "E90" ~ "E00-E90",
+  sub_chapter_start >= "F00" & sub_chapter_start <= "F99" ~ "F00-F99",
+  sub_chapter_start >= "G00" & sub_chapter_start <= "G99" ~ "G00-G99",
+  sub_chapter_start >= "H00" & sub_chapter_start <= "H59" ~ "H00-H59",
+  sub_chapter_start >= "H60" & sub_chapter_start <= "H95" ~ "H60-H95",
+  sub_chapter_start >= "I00" & sub_chapter_start <= "I99" ~ "I00-I99",
+  sub_chapter_start >= "J00" & sub_chapter_start <= "J99" ~ "J00-J99",
+  sub_chapter_start >= "K00" & sub_chapter_start <= "K93" ~ "K00-K93",
+  sub_chapter_start >= "L00" & sub_chapter_start <= "L99" ~ "L00-L99",
+  sub_chapter_start >= "M00" & sub_chapter_start <= "M99" ~ "M00-M99",
+  sub_chapter_start >= "N00" & sub_chapter_start <= "N99" ~ "N00-N99",
+  sub_chapter_start >= "O00" & sub_chapter_start <= "O99" ~ "O00-O99",
+  sub_chapter_start >= "P00" & sub_chapter_start <= "P96" ~ "P00-P96",
+  sub_chapter_start >= "Q00" & sub_chapter_start <= "Q99" ~ "Q00-Q99",
+  sub_chapter_start >= "R00" & sub_chapter_start <= "R99" ~ "R00-R99",
+  sub_chapter_start >= "S00" & sub_chapter_start <= "T98" ~ "S00-T98",
+  sub_chapter_start >= "V01" & sub_chapter_start <= "Y98" ~ "V01-Y98",
+  sub_chapter_start >= "Z00" & sub_chapter_start <= "Z99" ~ "Z00-Z99",
+  sub_chapter_start >= "U00" & sub_chapter_start <= "U99" ~ "U00-U99",
+))
+
 # Check unique values of columns to be converted into keys
 
-unique(df$ICD.Chapter)
 unique(df$ICD.Chapter.Code)
+unique(df$ICD.Sub.Chapter)
+unique(df$ICD.Sub.Chapter.Code)
 unique(df$Year)
 unique(df$Year.Code)
 unique(df$Age.Group)
@@ -56,30 +111,18 @@ unique(df$Gender.Code)
 unique(df$Race)
 unique(df$Race.Code)
 
-# Remove Not Stated values from Age.Group
-
-df <- subset(df, subset = df$Age.Group != "Not Stated")
-
 # Remove non-numeric values from Crude.Rate
 
 df$Crude.Rate <- gsub("[^0-9.]", "", df$Crude.Rate)
 
-# MAYBE MAKE A FUNCTION FOR THIS
 # Check non-numeric in Crude.Rate
 
 length(grep("(^$)|([0-9])", df$Crude.Rate, invert = TRUE))
 
-# Check non-numeric in Population
-
-length(grep("(^$)|([0-9])", df$Population, invert = TRUE))
-
-# Check non-numeric in Deaths
-
-length(grep("(^$)|([0-9])", df$Deaths, invert = TRUE))
-
 # Convert Data Types
 
-factors <- c("ICD.Chapter.Code",
+factors <- c("ICD.Chapter.Code", 
+            "ICD.Sub.Chapter.Code",
             "Age.Group.Code",
             "Gender.Code",
             "Race.Code")
@@ -89,40 +132,36 @@ df[,factors] <- lapply(df[,factors],
 
 df$Crude.Rate <- as.numeric(df$Crude.Rate)
 
-df$Deaths <- as.integer(df$Deaths)
-
-df$Population <- as.integer(df$Population)
-
 # Create keys for columns to be removed
 
 gender_key <- unique(df[, c("Gender.Code", "Gender")])
 age_key <- unique(df[, c("Age.Group.Code", "Age.Group")])
-icd_key <- unique(df[, c("ICD.Chapter.Code", "ICD.Chapter")])
-race_key <- unique(df[, c("Race.Code", "Race")])
-
-# Fix long chapter names for ICD 10
-
-icd_key$ICD.Chapter <- c("Parasitic Diseases",
-                         "Neoplams",
-                         "Blood Diseases",
-                         "Endocrine Diseases",
-                         "Mental Disorders",
-                         "Nervous System Diseases",
-                         "Eye Diseases",
-                         "Ear Diseases",
-                         "Circulatory Diseases",
-                         "Respiratory Diseases",
-                         "Digestive Diseases",
-                         "Skin Diseases",
-                         "Muscular Diseases",
-                         "Genitourinary Diseases",
-                         "Pregnancy/Childbirth",
-                         "Perinatal Conditions",
-                         "Congenital Malformations",
-                         "Not Classified Elsewhere",
-                         "Special Purposes",
-                         "External Causes"
+icd_key <- data.frame(ICD.Chapter.Code = unique(df[, c("ICD.Chapter.Code")]),
+                      ICD.Chapter = c(
+                        "Parasitic Diseases",
+                        "Neoplams",
+                        "Blood Diseases",
+                        "Endocrine Diseases",
+                        "Mental Disorders",
+                        "Nervous System Diseases",
+                        "Eye Diseases",
+                        "Ear Diseases",
+                        "Circulatory Diseases",
+                        "Respiratory Diseases",
+                        "Digestive Diseases",
+                        "Skin Diseases",
+                        "Muscular Diseases",
+                        "Genitourinary Diseases",
+                        "Pregnancy/Childbirth",
+                        "Perinatal Conditions",
+                        "Congenital Malformations",
+                        "Not Classified Elsewhere",
+                        "Special Purposes",
+                        "External Causes"
+                      )
 )
+icd_sub_key <- unique(df[, c("ICD.Sub.Chapter.Code", "ICD.Sub.Chapter", "ICD.Chapter.Code")])
+race_key <- unique(df[, c("Race.Code", "Race")])
 
 # Add population weights to age key
 
@@ -142,7 +181,9 @@ age_key$Age.Weight <- c(0.013818, # <1
 )
 
 # Remove unwanted columns
-df <- subset(df, select = -c(1, 2, 5, 6, 8, 10))
+df <- subset(df, select = -c(1, 2, 5, 6, 8, 10, 14))
+
+df <- select(df, ICD.Chapter.Code, everything())
 
 # Exploratory Analysis ----
 
@@ -156,25 +197,30 @@ print(total_deaths)
 
 # Create function for calculating age adjusted death rates
 
+# Function takes the name of the dataframe, then the name(s) of any grouping variables of interest
 age_adjust <- function(X, ...){
   
+  # Age.Group.Call needs to be included alongside the specific groups listed in the function call.
   X <- group_by(X, ..., Age.Group.Code)
   
   X <- summarise(X, Population = sum(Population), Deaths = sum(Deaths))
-
+  
+  # Calculate crude rate for each age group
   X$Crude.Rate <- (X$Deaths * 100000) / X$Population
-    
+  
+  # Add in the age weights from the age_key dataframe 
   X <- merge(
     X,
     age_key[, c("Age.Group.Code", "Age.Weight")],
     by = "Age.Group.Code"
   ) 
   
+  # Multiply crude rates by age weight and sum across age groups for finished product
   X$Age.Adjustment <- X$Age.Weight * X$Crude.Rate
   
-  X <- group_by(X, ...)
+  #X <- group_by(X, ...)
   
-  X <- summarise(X, Crude.Rate.Adjusted = sum(Age.Adjustment))
+  #X <- summarise(X, Crude.Rate.Adjusted = sum(Age.Adjustment))
   
   return(X)
 }
@@ -259,7 +305,7 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
 
 # Mental disorders by race
 
-filter(df, ICD.Chapter.Code == "F01-F99") %>%
+filter(df, ICD.Chapter.Code == "F00-F99") %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code)) +
   geom_line() +
@@ -270,7 +316,7 @@ filter(df, ICD.Chapter.Code == "F01-F99") %>%
 
 # Mental disorders by race and gender
 
-filter(df, ICD.Chapter.Code == "F01-F99") %>%
+filter(df, ICD.Chapter.Code == "F00-F99") %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
   geom_line() +
