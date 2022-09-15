@@ -73,7 +73,7 @@ str(df)
 sub_chapter_start <- substr(df$ICD.Sub.Chapter.Code, 1, 3)
 
 df <- df %>% mutate(ICD.Chapter.Code = case_when(
-  sub_chapter_start >= "A00" & sub_chapter_start <= "B99" ~ "A01-B99",
+  sub_chapter_start >= "A00" & sub_chapter_start <= "B99" ~ "A00-B99",
   sub_chapter_start >= "C00" & sub_chapter_start <= "D48" ~ "C00-D48",
   sub_chapter_start >= "D50" & sub_chapter_start <= "D89" ~ "D50-D89",
   sub_chapter_start >= "E00" & sub_chapter_start <= "E90" ~ "E00-E90",
@@ -92,9 +92,9 @@ df <- df %>% mutate(ICD.Chapter.Code = case_when(
   sub_chapter_start >= "Q00" & sub_chapter_start <= "Q99" ~ "Q00-Q99",
   sub_chapter_start >= "R00" & sub_chapter_start <= "R99" ~ "R00-R99",
   sub_chapter_start >= "S00" & sub_chapter_start <= "T98" ~ "S00-T98",
+  sub_chapter_start >= "U00" & sub_chapter_start <= "U99" ~ "U00-U99",
   sub_chapter_start >= "V01" & sub_chapter_start <= "Y98" ~ "V01-Y98",
   sub_chapter_start >= "Z00" & sub_chapter_start <= "Z99" ~ "Z00-Z99",
-  sub_chapter_start >= "U00" & sub_chapter_start <= "U99" ~ "U00-U99",
 ))
 
 # Check unique values of columns to be converted into keys
@@ -203,7 +203,7 @@ age_adjust <- function(X, ...){
   # Age.Group.Call needs to be included alongside the specific groups listed in the function call.
   X <- group_by(X, ..., Age.Group.Code)
   
-  X <- summarise(X, Population = sum(Population), Deaths = sum(Deaths))
+  X <- summarise(X, Population = sum(unique(Population)), Deaths = sum(Deaths))
   
   # Calculate crude rate for each age group
   X$Crude.Rate <- (X$Deaths * 100000) / X$Population
@@ -218,9 +218,9 @@ age_adjust <- function(X, ...){
   # Multiply crude rates by age weight and sum across age groups for finished product
   X$Age.Adjustment <- X$Age.Weight * X$Crude.Rate
   
-  #X <- group_by(X, ...)
+  X <- group_by(X, ...)
   
-  #X <- summarise(X, Crude.Rate.Adjusted = sum(Age.Adjustment))
+  X <- summarise(X, Crude.Rate.Adjusted = sum(Age.Adjustment))
   
   return(X)
 }
@@ -322,5 +322,16 @@ filter(df, ICD.Chapter.Code == "F00-F99") %>%
   geom_line() +
   geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
-  labs(title = "Deaths from Mental Illness by Race") +
+  labs(title = "Deaths from Mental Illness by Race and Gender") +
+  scale_color_discrete(labels = race_key$Race, name = "Race")
+
+# External causes by race and gender
+
+filter(df, ICD.Chapter.Code == "O00-O99") %>%
+  age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from External Causes by Race and Gender") +
   scale_color_discrete(labels = race_key$Race, name = "Race")
