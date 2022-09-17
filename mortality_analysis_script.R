@@ -68,38 +68,8 @@ dim(df)
 
 str(df)
 
-# Make index of icd chapters and chapter codes, then make columns for range of each chapter
-
-sub_chapter_start <- substr(df$ICD.Sub.Chapter.Code, 1, 3)
-
-df <- df %>% mutate(ICD.Chapter.Code = case_when(
-  sub_chapter_start >= "A00" & sub_chapter_start <= "B99" ~ "A00-B99",
-  sub_chapter_start >= "C00" & sub_chapter_start <= "D48" ~ "C00-D48",
-  sub_chapter_start >= "D50" & sub_chapter_start <= "D89" ~ "D50-D89",
-  sub_chapter_start >= "E00" & sub_chapter_start <= "E90" ~ "E00-E90",
-  sub_chapter_start >= "F00" & sub_chapter_start <= "F99" ~ "F00-F99",
-  sub_chapter_start >= "G00" & sub_chapter_start <= "G99" ~ "G00-G99",
-  sub_chapter_start >= "H00" & sub_chapter_start <= "H59" ~ "H00-H59",
-  sub_chapter_start >= "H60" & sub_chapter_start <= "H95" ~ "H60-H95",
-  sub_chapter_start >= "I00" & sub_chapter_start <= "I99" ~ "I00-I99",
-  sub_chapter_start >= "J00" & sub_chapter_start <= "J99" ~ "J00-J99",
-  sub_chapter_start >= "K00" & sub_chapter_start <= "K93" ~ "K00-K93",
-  sub_chapter_start >= "L00" & sub_chapter_start <= "L99" ~ "L00-L99",
-  sub_chapter_start >= "M00" & sub_chapter_start <= "M99" ~ "M00-M99",
-  sub_chapter_start >= "N00" & sub_chapter_start <= "N99" ~ "N00-N99",
-  sub_chapter_start >= "O00" & sub_chapter_start <= "O99" ~ "O00-O99",
-  sub_chapter_start >= "P00" & sub_chapter_start <= "P96" ~ "P00-P96",
-  sub_chapter_start >= "Q00" & sub_chapter_start <= "Q99" ~ "Q00-Q99",
-  sub_chapter_start >= "R00" & sub_chapter_start <= "R99" ~ "R00-R99",
-  sub_chapter_start >= "S00" & sub_chapter_start <= "T98" ~ "S00-T98",
-  sub_chapter_start >= "U00" & sub_chapter_start <= "U99" ~ "U00-U99",
-  sub_chapter_start >= "V01" & sub_chapter_start <= "Y98" ~ "V01-Y98",
-  sub_chapter_start >= "Z00" & sub_chapter_start <= "Z99" ~ "Z00-Z99",
-))
-
 # Check unique values of columns to be converted into keys
 
-unique(df$ICD.Chapter.Code)
 unique(df$ICD.Sub.Chapter)
 unique(df$ICD.Sub.Chapter.Code)
 unique(df$Year)
@@ -111,13 +81,68 @@ unique(df$Gender.Code)
 unique(df$Race)
 unique(df$Race.Code)
 
-# Remove non-numeric values from Crude.Rate
+icd_key <- data.frame(
+  ICD.Chapter.Code = c(
+    "A00-B99",
+    "C00-D48",
+    "D50-D89",
+    "E00-E90",
+    "F00-F99",
+    "G00-G99",
+    "H00-H59",
+    "H60-H95",
+    "I00-I99",
+    "J00-J99",
+    "K00-K93",
+    "L00-L99",
+    "M00-M99",
+    "N00-N99",
+    "O00-O99",
+    "P00-P96",
+    "Q00-Q99",
+    "R00-R99",
+    "S00-T98",
+    "V01-Y98",
+    "Z00-Z99",
+    "U00-U99"
+  ),
+  ICD.Chapter = c(
+    "Parasitic Diseases",
+    "Neoplams",
+    "Blood Diseases",
+    "Endocrine Diseases",
+    "Mental Disorders",
+    "Nervous System Diseases",
+    "Eye Diseases",
+    "Ear Diseases",
+    "Circulatory Diseases",
+    "Respiratory Diseases",
+    "Digestive Diseases",
+    "Skin Diseases",
+    "Musculoskeletal Diseases",
+    "Genitourinary Diseases",
+    "Pregnancy/Childbirth",
+    "Perinatal Conditions",
+    "Congenital Malformations",
+    "Not Classified Elsewhere",
+    "Consequences of External Causes",
+    "External Causes",
+    "Healthcare Factors",
+    "Special Purposes"
+  )
+)
 
-df$Crude.Rate <- gsub("[^0-9.]", "", df$Crude.Rate)
+# Add ICD Chapter Codes to df
 
-# Check non-numeric in Crude.Rate
+library(sqldf)
 
-length(grep("(^$)|([0-9])", df$Crude.Rate, invert = TRUE))
+df <- sqldf("SELECT df.*, icd_key.'ICD.Chapter.Code' 
+      FROM df 
+      JOIN icd_key ON 
+        LEFTSTR(df.'ICD.Sub.Chapter.Code', 3) >= 
+          LEFTSTR(icd_key.'ICD.Chapter.Code', 3)
+        AND LEFTSTR(df.'ICD.Sub.Chapter.Code', 3) <= 
+            RIGHTSTR(icd_key.'ICD.Chapter.Code', 3)")
 
 # Convert Data Types
 
@@ -130,38 +155,18 @@ factors <- c("ICD.Chapter.Code",
 df[,factors] <- lapply(df[,factors],
                         factor)
 
-df$Crude.Rate <- as.numeric(df$Crude.Rate)
-
 # Create keys for columns to be removed
 
 gender_key <- unique(df[, c("Gender.Code", "Gender")])
 age_key <- unique(df[, c("Age.Group.Code", "Age.Group")])
-icd_key <- data.frame(ICD.Chapter.Code = unique(df[, c("ICD.Chapter.Code")]),
-                      ICD.Chapter = c(
-                        "Parasitic Diseases",
-                        "Neoplams",
-                        "Blood Diseases",
-                        "Endocrine Diseases",
-                        "Mental Disorders",
-                        "Nervous System Diseases",
-                        "Eye Diseases",
-                        "Ear Diseases",
-                        "Circulatory Diseases",
-                        "Respiratory Diseases",
-                        "Digestive Diseases",
-                        "Skin Diseases",
-                        "Muscular Diseases",
-                        "Genitourinary Diseases",
-                        "Pregnancy/Childbirth",
-                        "Perinatal Conditions",
-                        "Congenital Malformations",
-                        "Not Classified Elsewhere",
-                        "Special Purposes",
-                        "External Causes"
-                      )
-)
-icd_sub_key <- unique(df[, c("ICD.Sub.Chapter.Code", "ICD.Sub.Chapter", "ICD.Chapter.Code")])
+icd_sub_key <- unique(df[, c("ICD.Chapter.Code", "ICD.Sub.Chapter.Code", "ICD.Sub.Chapter")])
 race_key <- unique(df[, c("Race.Code", "Race")])
+
+# Sort race_key alphabetically by code
+
+race_key <- arrange(race_key, Race.Code)
+icd_key <- arrange(icd_key, ICD.Chapter.Code)
+icd_sub_key <- arrange(icd_sub_key, ICD.Sub.Chapter.Code)
 
 # Add population weights to age key
 
@@ -182,6 +187,8 @@ age_key$Age.Weight <- c(0.013818, # <1
 
 # Remove unwanted columns
 df <- subset(df, select = -c(1, 2, 5, 6, 8, 10, 14))
+
+# Put ICD.Chapter.Code first
 
 df <- select(df, ICD.Chapter.Code, everything())
 
@@ -245,26 +252,17 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
 
 # Age Adjusted Crude Rate by year and race for two causes of death
 
+labels_top <- c("Neoplasms", "Circulatory Diseases")
+names(labels_top) <- death_cause
+
 filter(df, ICD.Chapter.Code %in% death_cause) %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code) %>%
-  ggplot(
-    aes(
-      x = Year,
-      y = Crude.Rate.Adjusted,
-      shape = ICD.Chapter.Code,
-      color = Race.Code
-    )
-  ) +
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code)) +
   geom_line() +
   geom_point() +
+  facet_wrap(~ICD.Chapter.Code, labeller = labeller(ICD.Chapter.Code = labels_top))+
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Top Causes of Death Over Time") +
-  scale_shape_discrete(
-    labels = icd_key$ICD.Chapter[
-      icd_key$ICD.Chapter.Code %in% death_cause
-    ],
-    name = "Cause of Death"
-  ) +
   scale_color_discrete(labels = race_key$Race, name = "Race")
 
 # Age adjusted crude rate for common causes of death 
@@ -318,7 +316,8 @@ filter(df, ICD.Chapter.Code == "F00-F99") %>%
 
 filter(df, ICD.Chapter.Code == "F00-F99") %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
-  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code)) +
+  facet_wrap(~Gender.Code) +
   geom_line() +
   geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
@@ -327,7 +326,7 @@ filter(df, ICD.Chapter.Code == "F00-F99") %>%
 
 # External causes by race and gender
 
-filter(df, ICD.Chapter.Code == "O00-O99") %>%
+filter(df, ICD.Chapter.Code == "V01-Y98") %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
   geom_line() +
@@ -335,3 +334,25 @@ filter(df, ICD.Chapter.Code == "O00-O99") %>%
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Deaths from External Causes by Race and Gender") +
   scale_color_discrete(labels = race_key$Race, name = "Race")
+
+# External causes Sub-Chapters by gender
+
+filter(df, ICD.Chapter.Code == "V01-Y98") %>%
+  age_adjust(ICD.Sub.Chapter.Code, Year, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Sub.Chapter.Code)) +
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from External Causes") +
+  scale_color_discrete(
+    labels = str_wrap(
+      icd_sub_key$ICD.Sub.Chapter[icd_sub_key$ICD.Chapter.Code == "V01-Y98"],
+      20
+    ),
+    name = "Cause of Death"
+  ) +
+  facet_grid(cols = vars(Gender.Code))
+
+             
+
+setNames(1:2, icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause])
