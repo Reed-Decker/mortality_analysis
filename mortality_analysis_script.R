@@ -81,6 +81,15 @@ unique(df$Gender.Code)
 unique(df$Race)
 unique(df$Race.Code)
 
+# Rename non-matching age groups
+
+df$Age.Group <- gsub("(5-9 years)|(10-14 years)", "5-14 years", df$Age.Group)
+df$Age.Group <- gsub("(15-19 years)|(20-24 years)", "15-24 years", df$Age.Group)
+df$Age.Group.Code <- gsub("(5-9)|(10-14)", "5-14", df$Age.Group.Code)
+df$Age.Group.Code <- gsub("(15-19)|(20-24)", "15-24", df$Age.Group.Code)
+
+#Make ICD chapters
+
 icd_key <- data.frame(
   ICD.Chapter.Code = c(
     "A00-B99",
@@ -172,10 +181,8 @@ icd_sub_key <- arrange(icd_sub_key, ICD.Sub.Chapter.Code)
 
 age_key$Age.Weight <- c(0.013818, # <1
                         0.055317, # 1-4
-                        0.145565, # 5-9
-                        0.145565, # 10-14
-                        0.138646, # 15-19
-                        0.138646, # 20-24
+                        0.145565, # 5-14
+                        0.138646, # 15-24
                         0.135573, # 25-34
                         0.162613, # 35-44
                         0.134834, # 45-54
@@ -191,6 +198,13 @@ df <- subset(df, select = -c(1, 2, 5, 6, 8, 10, 14))
 # Put ICD.Chapter.Code first
 
 df <- select(df, ICD.Chapter.Code, everything())
+
+# Collapse duplicate age groups
+
+df <- df %>% 
+  group_by(ICD.Chapter.Code, ICD.Sub.Chapter.Code, Year, Age.Group.Code, Gender.Code, Race.Code) %>%
+  summarize_all(sum) %>%
+  ungroup()
 
 # Exploratory Analysis ----
 

@@ -1,7 +1,7 @@
 ---
 title: "Mortality Analysis"
 author: "Reed Decker"
-date: "2022-09-05"
+date: "2022-09-21"
 output: html_document
 ---
 
@@ -12,17 +12,21 @@ setwd(dirname(getActiveDocumentContext()$path))
 renv::restore()
 ```
 
-# Mortality Analysis
+Recently in conversation, a relative mentioned anecdotally how heart complications seemed to be getting more and more treatable, and cited several examples of heart-attack victims she knew who had made successful recoveries from things that would have almost certainly been death sentences once. I thought it might be interesting to try and visualize this decline over the years, in addition to seeing if there are similar declines for other illnesses. I've also heard a lot of women and minorities talk about their struggles with the healthcare system, so I thought it would also be illuminating to see how the trends in mortality differ by race and gender.
 
-Recently in conversation, a relative mentioned anecdotal how heart complications seemed to be getting more and more treatable, and cited several examples of heart-attack victims she knew who had made successful recoveries from things that would have almost certainly been death sentences once. I thought this was interesting, but it made me wonder, how much better has medicine gotten at treating other illnesses? I've also heard a lot of women and minorities talk about their struggles with the healthcare system, so I thought it would also be illuminating to see how the trends in mortality differ by race and gender.
+To start with, I went to the [CDC compressed mortality dataset](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death) and queried the 1999-2016 database. Each database organizes cause of death based on the International Classification of Disease (ICD), which has updated several times over the years. While older data is available, the classification system would be slightly different the further back I went, and I'd have to try to find some way of equating them all. Fortunately for my purposes, the 1999 to 2016 data, which uses the 10th edition of the ICD, should be plenty. I queried the system for information organized by ICD sub-chapter, year, age, race, and gender. 
 
-To start with, I went to the [CDC compressed mortality dataset](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death) and queried the 1999-2016 database for death rates by International Classification of Disease (ICD) sub-chapter, year, age, race, and gender. I'm not actually interested in examining the data by age, but the CDC recommends looking at age adjusted death rates when comparing between population, so I need to age data to calculate that. 
+For this analysis, I'm not actually interested in examining the data by age, but I still need to query the age data in order to create age adjusted death rates, which is what the CDC recommends using when comparing multiple populations. The reason for this is that some causes of death are far more common for certain age groups. Various illnesses are common for older adults, but rare for children, or vice-versa. Alternatively, some things are much more dangerous depending on age group. For example, chicken-pox is considered fairly harmless for children, but can cause severe complications in adults. If we had a population with relatively few children, but lots of older adults, we might expect to see a much higher rate of death for chicken-pox, even if the rate of chicken-pox is exactly the same as a more child-heavy group. In order to account for this, age adjusted mortality rates take a weighted average of different age groups in order to transform each population into a standardized population, where the proportions of each age group are the same. Currently the CDC uses the estimated population for the year 2000 as their standardized population. The estimates and the related age weights can be found [here](https://wonder.cdc.gov/wonder/help/cmf.html#2000%20Standard%20Population). 
+
+Unfortunately, the CDC Wonder query system won't output any query that produces more than 75,000 results. In order to get all the data I wanted, I had to submit a separate query for each individual age range, meaning I actually have 14 datasets to work with.
 
 ## Data Cleaning
 
-Unfortunately the CDC Wonder query system will not output queries that produce more than 75,000 results. In order to get all the data I wanted, I wound up having to submit a separate query for each age range, which means I now have 14 different datasets. To start, I'll need to load those in and merge them together. I'll also have a peek at the structure, dimensions, and the first few rows of the resulting dataframe.
+Before I start analyzing the data, I need to do some basic data cleaning, and some formatting as well. Fortunately for this analysis, I'm just using data that was output by a single query system, and I was able to remove a lot of unwanted input at the time of the query, so there shouldn't be too much cleaning needed.
 
-```{r load_merge}
+To start with, I'll have to merge my 14 datasets into a single dataframe. After that, I want to get a clear idea of what I'm working with, so I'm also going to ask for the dimensions of the dataframe as well as its basic structure.
+
+```{r load_merge, message = FALSE}
 library(tidyverse)
 
 # Load data by age
@@ -63,15 +67,19 @@ dim(df)
 str(df)
 ```
 
-The only immediate issues I see are that several columns have redundant information, and some of them are the wrong data type as well. From the look of the first few rows, the only column that can't be simply converted to the proper data type is the Crude.Rate column. I'd like the crude death rate to be numeric, rather than character, but it looks like a lot of my death rates have been marked as "unreliable" which introduces a character string. Normally I'd want to remove those character strings or split them off into a different column. However, I'm actually going to want to calculate these rates myself. For example, if I'm making a figure where I split the data by race, but not gender, the crude rates given here won't work. However, the crude rate is calculated by the formula "(Deaths \* 100,000) / Population" so I have the information I need to obtain the crude rate for any section of the population I want, meaning I don't need this column. The fact that some of the rates are marked as unreliable isn't a concern in and of itself. While the CDC considers any crude rate calculated with less than 20 deaths to be unreliable, these aren't our final crude rates. Our actual crude rates will add together all the age groups after adjustment, meaning we should have more than enough deaths in each group to calculate a reliable estimate.
+The only immediate issues I see are that several columns have redundant information. Most of them are also currently character strings, whereas I'd prefer them to be factors. From the look of the first few entries in the character string columns, there's no immediately apparent reasons why they can't be simply converted into factors. I'll take a closer look later, but for now no problems are jumping out for those columns.
 
-As far as the redundant columns go, for several fields, such as ICD subchapter, gender, and race, the query system automatically outputs both a plain English version of the data and a reference code. This means I have a lot of columns with perfectly correlated information. I'll deal with those in a moment, but before I do, I want to make sure I don't have any data cells marked as "NA" in the dataframe.
+One potentially larger issue is that I'd like the crude death rate to be numeric, rather than a character string. Because that column contains a lot of non-numeric values, such as several cells being marked "Unreliable", it won't convert simply into a numeric value. Normally I'd want to remove those character strings or split them off into a different column. However, I don't need to do that for this dataframe, because I don't actually want this column of crude death rates at all. The crude rate is calculated by the formula "(Deaths * 100,000) / Population". This means that the crude rates I have right now only work for this specific grouping of the data. If, for example, I wanted to examine the change in death rate across race and cause of death, but not across gender, I'd have to calculate new crude rates using the sum of the deaths and population for both men and women. In fact, the only reason I included the crude rate in my query was because it's mandatory output for the CDC Wonder query system. So, instead of trying to convert this column to being numeric, I can simply remove it from the dataframe later on, and then calculate the death rates for the groups I'm interested in when I need them.
+
+The fact that some of the rates are marked as unreliable also seems like it might be a problem for the validity of my analysis, but it's also not a problem. The reason they've been marked as unreliable is because the CDC doesn't consider a crude rate to be reliable when there are fewer than 20 deaths in the population. The sample size is too small for the number to be meaningful. The reason the number of deaths I have in each field is so low, however, is because I split each population into 14 different age groups. When I calculate the age-adjusted death rates, all those age groups will be added to each other, resulting in an age-adjuste death rate with a decent sample size.
+
+As far as the redundant columns go, for several fields, such as the ICD sub-chapter, gender, year, age group, and race, the query system automatically outputs both a plain English version of the data and a reference code. This means I have a lot of columns with perfectly correlated information. I'll deal with those in a moment, but before I do, I want to make sure I don't have any data cells marked as "NA" in the dataframe.
 
 ```{r check_NA}
 apply(df, 2, function(x) sum(is.na(x)))
 ```
 
-It looks like I have several NA values. The number of NA values in Year.Code, Year, Population, and Deaths are all the same, so it's a fair bet that it's the same rows containing NA values for each of them. There's also a couple in Age.Group.Code. I'll subset both groups of NA values and examine them to try and see what the cause is.
+It looks like I have several NA values. The number of NA values in Year.Code, Year, Population, and Deaths are all the same, so it's a fair bet that it's the same rows containing NA values for each of them. There's also a much smaller number of NA values in Age.Group.Code. I'll subset both groups of NA values and examine them to try and see what the cause is.
 
 ```{r na_subset}
 age_group_na <- subset(df, subset = is.na(df$Age.Group.Code))
@@ -81,7 +89,9 @@ knitr::kable(head(age_group_na))
 knitr::kable(head(year_na))
 ```
 
-It looks like the "Notes" column of each query I made contains information about the dataset and the query used to generate it. Every other column is either empty or NA for those rows. For some reason the Age.Group.Code column came back as NA for one query but blank for all the others, which is why it had only 60 NA values. This means I can simply remove all the NA values from the main dataframe, as they all contain no data.
+It looks like the Notes column of each query I made contains information about the dataset and the query used to generate it. Every other column is either empty or NA for those rows. For some reason the Age.Group.Code column came back as NA for one query but blank for all the others, which is why it had only 60 NA values. This means I can simply remove all the NA values from the main dataframe, as they all contain no data. It's a little concerning that this happened, and makes me wonder if I accidentally changed something on one of my 14 queries. Fortunately, the notes fields for these NA values includes a description of each query, and I can verify the query structure of the oddball query is the same as all the other ones. However, the oddball query is for the <1 year old age group. The query system allow for examination of further infant ranges inside the <1 group, so my best guess is that the existence of this subset of age groups inside the <1 age group is the cause of the minor difference in how the query system output the data here. 
+
+Regardless, it looks like I should simply be able to delete these rows, as they contain no actual data. The fact that they contain information on the nature of each exact query, and some of the documentation for the dataset is useful. Conveniently, having just subset those rows into a new dataframe, and I'll still have access to them if I need them, even after removing them from the main dataframe.
 
 ```{r remove_empty_rows}
 df <- subset(df, subset = !is.na(df$Year))
@@ -93,15 +103,13 @@ With the NA values taken care of, I also want to check to see if there are any o
 apply(df, 2, function(x) sum(x == ""))
 ```
 
-There are 137,664 empty cells in the Notes column. I know from earlier that the dataframe used to have 138,420 rows, and I just deleted 756, so our dataframe is currently 137,664 rows long. In other words, every cell in the Notes column is empty, so I can feel free to delete the entire column later on.
+There are 137,664 empty cells in the Notes column. I know from earlier that the dataframe used to have 138,420 rows, and I just deleted 756, so our dataframe is currently 137,664 rows long. In other words, every cell in the Notes column is empty, so I can feel free to delete the entire column later on when I prune the dataframe down.
 
-Now that the data appears to be fairly clean, I actually want to add a new column. For my analysis, I know that I'm going to want to look at ICD chapter at first, rather than sub-chapter, so I can narrow down areas of interest. Unfortunately, the queries I submited used all of the available fields to subset the data. In order to generate a column of ICD chapter codes, I'll have to extract that information from the subchapter codes.
+Now that the data appears to be fairly clean, I actually want to add a new column. For my analysis, I know that I'm going to want to look at ICD chapter at first, rather than ICD sub-chapter. That way I can get a general idea of what the data looks like, then more narrowly examine areas of interest when they come up. Unfortunately, the CDC query system only allows for the data to be grouped by five different fields, and I used all five on sub-chapter, year, race, gender, and age. Fortunately, the system the ICD uses for chapter and sub-chapter codes is simple. The individual cause of death codes are a letter and two digits ranging from A00 to Z99. The code for a chapter is simply a range of values (e.g. "A00-B99"). The code for a sub-chapter is the same, just with a narrower range (e.g. "A00-A09", "A16-A19", etc). I already have the sub-chapter ranges, so in order to get a column of chapter ranges, I just need to make a new column and fill each cell with the ICD chapter codes that encompass the sub-chapter range.
 
-Fortunately, the system used to create chapter and subchapter codes is simple. The individual cause of death codes are a letter and two digits ranging from A00 to Z99. The code for a chapter is simply a range of values (e.g. A00-B99). The code for a subchapter is the same, just with a narrower range (e.g. A00-A09, A16-A19, etc). I already have the subchapter ranges, so once I put in the chapter ranges, it should be easy to join them to the subchapters based on if the subchapter code falls inside the range of the chapter code.
+To start, I want to define a new dataframe that includes both the chapter codes and short versions of the titles for each chapter in the ICD 10. Fortunately the WHO maintains a [webpage with details on the ICD 10](https://icd.who.int/browse10/2016/en#/) I can use to get this information. Once I have the dataframe with the ICD chapter codes, I'm going to join the codes to the main dataframe. Most R functions for joining dataframes that I know of don't have the kind of inequality join I need to do this, so I'm going to load in the "sqldf" library to write an SQL join query instead.
 
-To start, I want to define a new dataset that includes both the chapter codes and short versions of the titles for each chapter in the ICD 10. Fortunately the WHO maintains a [webpage with details on the ICD 10](https://icd.who.int/browse10/2016/en#/) I can use to get this information. Once I have the dataframe with the ICD chapter codes, I'm going to join the codes to the main dataframe. Most R functions for joining dataframes that I know of don't have the kind of inequality join I need to do this, so I'm going to load in the "sqldf" library to write an SQL join query instead.
-
-```{r create_ICD_key}
+```{r create_ICD_key, message = FALSE}
 # Make ICD Chapter and Chapter Code dataframe
 icd_key <- data.frame(
   ICD.Chapter.Code = c(
@@ -167,18 +175,17 @@ df <- sqldf("SELECT df.*, icd_key.'ICD.Chapter.Code'
             RIGHTSTR(icd_key.'ICD.Chapter.Code', 3)")
 ```
 
-Next I want to make some changes to the data structure. I want the age group, gender, race, ICD chapter and ICD subchapter data to be factors, rather than character data. Before I make any conversions, I want to make sure there aren't any unexpected values in any of those columns that will wind up being coerced to NA if I try to convert to factor, or give me weird factor levels I didn't expect.
+Next I want to make some changes to the data structure. I want the age group, gender, race, ICD chapter and ICD sub-chapter data to be factors, rather than character strings. Before I make any conversions, I want to make sure there aren't any unexpected values in any of those columns that will wind up being coerced to NA if I try to convert to factor, or give me weird factor levels I didn't expect.
 
 ```{R check_unique_vectors}
 unique(df$ICD.Chapter.Code)
 unique(df$ICD.Sub.Chapter.Code)
-unique(df$Age.Group)
 unique(df$Age.Group.Code)
 unique(df$Gender.Code)
 unique(df$Race.Code)
 ```
 
-It doesn't look like there's any nasty surprises hidden in the data, so I can go ahead and convert these values to factors.
+It doesn't look like there's any nasty surprises hidden in the data, so I can go ahead and convert these columns to factors. 
 
 ```{r make_factor}
 
@@ -191,12 +198,27 @@ factors <- c("ICD.Chapter.Code",
 df[,factors] <- lapply(df[,factors], factor)
 ```
 
-I mentioned earlier I wanted to do something about all the redundant columns I have in the data. In general, I want to keep the ".Code" columns, because they contain much briefer versions of the data that are easier to use in code. However, when visualizing the data, I'll want more descriptive labels. Instead of deleting these columns outright, I'm going to set up a relational structure by making several new dataframes which match the code columns that I'm keeping in the dataframe to their plain English translations, just like the dataframe I programmed in for the ICD chapter codes. This way I can work with the main dataframe easily, but reference any information I need to make figures without too much trouble.
+
+The next thing I want to fix is that I have too many different sub-groups for age. I've mentioned a few times that I have 14 different age groups. However, there are only 11 age group weights to use when doing the age adjustment. This is because the age weights use the groups "5-14 years" and "15-24 years", while our dataset has the groups "5-9 years," "10-14 years," "15-19 years," and "20-24 years". This means I have four age groups that I want to collapse into two age groups, summing together the deaths and population. To start, I'll rename the age groups in my dataframe to match the weights used to calculate age adjustments.
+
+```{r rename_age_groups}
+df$Age.Group <- gsub("(5-9 years)|(10-14 years)", "5-14 years", df$Age.Group)
+df$Age.Group <- gsub("(15-19 years)|(20-24 years)", "15-24 years", df$Age.Group)
+df$Age.Group.Code <- fct_collapse(
+  df$Age.Group.Code,
+  `5-14` = c("5-9", "10-14"), 
+  `15-24` = c("15-19", "20-24")
+)
+```
+
+Now my factor levels match the ones I need, but I have two different "5-14" and "15-24" rows for each group. I'll sum those rows together shortly, but it'll be a simpler operation if I remove the redundant columns from my dataset first. In general, I want to keep the ".Code" columns, because their version of the data is much shorter, which makes it easier to type, and makes the code easier to read (with the exception of the Year.Code column, which is identical to the regular Year column in every way). However, when visualizing the data, I'll want more descriptive labels, closer to what's in the plain English columns. Instead of deleting the plain English columns outright, I'm going to set up a relational structure by making several new dataframes that match the ".Code" version of each factor level to the plain English version. That way I can reference the plain English description of each variable level whenever I need it, but it doesn't clog up the dataframe, or require overly long strings to filter the data.
 
 ```{r make_vector_keys}
 gender_key <- unique(df[, c("Gender.Code", "Gender")])
 age_key <- unique(df[, c("Age.Group.Code", "Age.Group")])
-icd_sub_key <- unique(df[, c("ICD.Chapter.Code", "ICD.Sub.Chapter.Code", "ICD.Sub.Chapter")])
+icd_sub_key <- unique(
+  x = df[, c("ICD.Chapter.Code", "ICD.Sub.Chapter.Code", "ICD.Sub.Chapter")]
+)
 race_key <- unique(df[, c("Race.Code", "Race")])
 
 # Sort keys alphabetically where not already alphabetical
@@ -206,7 +228,7 @@ icd_key <- arrange(icd_key, ICD.Chapter.Code)
 icd_sub_key <- arrange(icd_sub_key, ICD.Sub.Chapter.Code)
 ```
 
-Now that I've made sure I have all the information about what each column means somewhere, I can go ahead and delete the redundant columns. Additionally, I noted earlier I wanted to remove the Notes and Crude.Rate columns. I'd also like the ICD.Chapter.Code column to appear as the first column, rather than the last, just for my own convenience. 
+Now that I've made sure I have all the information about what each column means somewhere, I can go ahead and delete the redundant columns. Additionally, I noted earlier I wanted to remove the Notes and Crude.Rate columns. In addition, the Year.Code column is the same as the Year column, so I certainly don't need both. "Year" is a lot easier to type than "Year.Code", so I'll be removing the latter. I'd also like the ICD.Chapter.Code column to appear as the first column, rather than the last column as it current does. 
 
 ```{r remove_columns}
 # Remove unwanted columns
@@ -217,23 +239,35 @@ df <- subset(df, select = -c(1, 2, 5, 6, 8, 10, 14))
 df <- select(df, ICD.Chapter.Code, everything())
 ```
 
+Finally, I need to sum across the 5-14 and 15-24 age groups that I created earlier.
+
+```{r collapse_age_group_rows}
+df <- df %>% 
+  group_by(
+    ICD.Chapter.Code,
+    ICD.Sub.Chapter.Code,
+    Year,
+    Age.Group.Code,
+    Gender.Code,
+    Race.Code
+  ) %>%
+  summarize_all(sum) %>%
+  ungroup()
+```
+
 Now that my dataframe is clean and easy to work with, I can start having some fun with data!
 
 ## Exploritory Analysis
 
-As I mentioned earlier, I want to look at age adjusted death rates, rather than just the crude death rate. The reason for this is that some causes of death are more frequent for certain age groups. For example, dementia is going to be a much more common cause of death for people in the older age groups. Differences between how many people are in each population can confound our findings as a result unless we account for those differences. The age adjusted mortality rate does this by converting each population into a standardized population. Currently the CDC uses the estimated population for the year 2000 as their standardized population. The estimates and the related age weights can be found [here](https://wonder.cdc.gov/wonder/help/cmf.html#2000%20Standard%20Population).
+As I mentioned earlier, I want to look at age adjusted death rates, rather than just the crude death rate. To calculate the age adjusted mortality rate itself is fairly simple. You multiply the crude death rate for each individual age group by the age weight, and then add each of those results together. When I queried the data, I could have actually had the age adjusted mortality rates included but, as with the crude rate, I want to define the groups of interest myself and calculate their specific age adjusted rates.
 
-To calculate the age adjusted mortality rate itself is fairly simple. You multiply the crude death rate for each individual age group by the age weight, then add them together. When I queried the data, I could have actually had the age adjusted mortality rates included but, as with the crude rate, I want to define the groups of interest myself and calculate their specific age adjusted rates.
-
-The first thing I want to do is add the age weights to the age group dataframe I made earlier.
+The first thing I want to do is add the age weights to the age group dataframe I made earlier. In fact, because the age group and age group code are so similar, and I'm not planning to report on any age values, the main reason I made this dataframe to begin with was to have a place to put these age weights. The only other reason to have it is as a reminder that the age group code "1" actually means "<1".
 
 ```{r add_age_weights}
 age_key$Age.Weight <- c(0.013818, # <1
                         0.055317, # 1-4
-                        0.145565, # 5-9
-                        0.145565, # 10-14
-                        0.138646, # 15-19
-                        0.138646, # 20-24
+                        0.145565, # 5-14
+                        0.138646, # 15-24
                         0.135573, # 25-34
                         0.162613, # 35-44
                         0.134834, # 45-54
@@ -244,14 +278,16 @@ age_key$Age.Weight <- c(0.013818, # <1
 )
 ```
 
-If I'm going to make a lot of different figures based on different groupings of people, I'm also going to want a way to easily and quickly calculate the age adjusted mortality rates by group, so I'm going to write a function that outputs just that. It should allow me to work out the age adjusted mortality rates for the populations I want in just a few commands and pipe the results into a figure.
+If I'm going to make a lot of different figures based on different groupings of people, I'm also going to want a way to easily and quickly calculate the age adjusted mortality rates by group. That means I need to write a function that outputs just that. It should allow me to work out the age adjusted mortality rates for the populations I want in just a few commands and pipe the results into a figure.
 
 ```{r age_adjustment_function}
 
-# Function takes the name of the dataframe, then the name(s) of any grouping variables of interest
+# Function takes the name of the dataframe, then the name(s) of any grouping 
+# variables of interest
 age_adjust <- function(X, ...){
   
-  # Age.Group.Call needs to be included alongside the specific groups listed in the function call.
+  # Age.Group.Call needs to be included alongside the specific groups listed in 
+  # the function call.
   X <- group_by(X, ..., Age.Group.Code)
   
   X <- summarise(X, Population = sum(unique(Population)), Deaths = sum(Deaths))
@@ -259,18 +295,19 @@ age_adjust <- function(X, ...){
   # Calculate crude rate for each age group
   X$Crude.Rate <- (X$Deaths * 100000) / X$Population
    
-  # Add in the age weights from the age_key dataframe 
+  # Add in the age weights from the age_key dataframe
   X <- merge(
-    X,
-    age_key[, c("Age.Group.Code", "Age.Weight")],
+    x = X, 
+    y = age_key[, c("Age.Group.Code", "Age.Weight")], 
     by = "Age.Group.Code"
-  ) 
-  
-  # Multiply crude rates by age weight and sum across age groups for finished product
+  )
+
+  # Multiply crude rates by age weight and sum across age groups for finished 
+  # product
   X$Age.Adjustment <- X$Age.Weight * X$Crude.Rate
-  
+
   X <- group_by(X, ...)
-  
+
   X <- summarise(X, Crude.Rate.Adjusted = sum(Age.Adjustment))
   
   return(X)
@@ -279,27 +316,27 @@ age_adjust <- function(X, ...){
 
 ### What are the leading causes of death from 1999 to 2016?
 
-The first thing I want to know is what the top overall causes of death are. For this, I'm not going to use the age adjusted rates. I just want to get an idea of what the most common causes of death are, so all I want to do is sum the deaths by cause across the entire dataset. Because there are over a hundred subchapters in the ICD, I just want to look at ICD chapters at first to get a general picture.
+The first thing I want to know is what the top overall causes of death are. For this, I'm not going to use the age adjusted rates. I just want to get an idea of what the most common causes of death are across this entire time-span. To do that, I'll just sum the deaths by cause across the dataframe. Because there are over a hundred sub-chapters in the ICD, I just want to look at the main chapters at first to get a general picture.
 
-```{r total_deaths_by_cause}
+```{r total_deaths_by_cause, message = FALSE}
 total_deaths <- df %>%
   left_join(icd_key, by = c("ICD.Chapter.Code" = "ICD.Chapter.Code")) %>%
   group_by(ICD.Chapter.Code, ICD.Chapter) %>%
   summarise(Deaths = sum(Deaths)) %>%
   arrange(desc(Deaths))
 
-print(total_deaths)
+knitr::kable(total_deaths)
 ```
 
 Diseases of the circulatory system and neoplasms lead the other top causes of death by an order of magnitude. This isn't too surprising, as those are the chapters that include cancer and heart disease. Our least common causes of death include diseases of the eye, ears, deaths from codes reserved for special purposes, pregnancy and childbirth, and skin diseases. I'm actually quite surprised to see pregnancy and childbirth as low on the list as they are, given how dangerous childbirth has historically been.
 
-This table also gives me some information on how I want to break down my figures. Looking at every ICD chapter by year would be too much information to show on a line graph and have it still be readable, so I already knew I'd want to split them across multiple figures. Now I also have some idea of which causes of death will fit on the same scale as one another.
+This table also gives me some information on how I want to break down my figures. Looking at every ICD chapter by year would be too much information to show on a line graph and have it still be readable, so I already knew I'd want to split them across multiple figures. Now I know that I probably want to graph neoplasms and circulatory diseases separately from other causes. As a general rule of thumb, I like to keep the scale of a figure inside the same order of magnitude.
 
-### Have the leading causes of death changed?
+### Has the death rate for leading causes of death changed over time?
 
-This whole project was started by a discussion of how heart disease has become more treatable, so it only makes sense I take a look into that. I also want to graph it alongside neoplasms. I'm interested to see what the change in neoplasms looks like relative to the change in heart disease. Additionally, those two causes of death tower over all the others by a full order of magnitude, so I can't really put any other causes of death next to either of them and maintain a reasonable scale on the figure.
+This whole project was started by a discussion of how heart disease has become more treatable, so naturally I want to delve deeper into the death rate for circulatory disease immediately. Neoplasms works well as a cause of death to graph alongside it, even if it wasn't the only other one in the same order of magnitude. Treating cancer is extremely difficult, and the subject of a massive amount of research, so it'll be good to see how they compare next to each other.
 
-```{r cause_by_year}
+```{r cause_by_year, message = FALSE}
 death_cause <- c("C00-D48", "I00-I99")
 
 filter(df, ICD.Chapter.Code %in% death_cause) %>%
@@ -310,75 +347,63 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Top Causes of Death Over Time") +
   scale_color_discrete(
-    labels = icd_key$ICD.Chapter[
-      icd_key$ICD.Chapter.Code %in% death_cause
-    ],
+    labels = icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause],
     name = "Cause of Death"
   )
 ```
 
+There's an overall decline for both causes, but it's much steeper for circulatory diseases than neoplasms. The decline for neoplasms is impressively linear. I wouldn't normally expect to see such a steady and consistent decline in real-world data. By contrast the slope on the neoplasms appears less consistent. Just eyeballing it, I'd say it's probably linear, but there are some potential hints of a logarithmic curve to it, meaning the decline in the death rate for circulatory disease might be starting to flatten out. I don't think I have data across enough years to get meaningful results out of trying to fit both functions to the data and seeing which performs better. In another analysis it might be worth querying some of the databases that use older versions of the ICD and trying to equate their measures to get a bigger sample size.
 
+#### Is the decline in leading causes of death the same across gender and race?
 
-There's an overall decline for both causes, but it's much steeper for circulatory diseases than neoplasms. The decline for neoplasms is impressively linear. I wouldn't normally expect to see such a steady and consistent decline in real-world data. By contrast the slope on the neoplasms appears less consistent. Just eyeballing it, I'd say it's probably linear, but there are some potential hints of a logarithmic curve to it. I don't think I have data across enough years to get meaningful results out of trying to fit both functions to the data and seeing which performs better, but it might be worth seeing if I can equate some of the older data, which uses older versions of the ICD, to get a larger sample size in another analysis.
+Earlier I'd mentioned race and gender as potential factors, so it may be interesting to see if these factors interact with the data.
 
-### Is the decline in leading causes of death the same across gender and race?
-
-Earlier I'd mentioned race as a potential factor, so it may be interesting to split these results by race to see if there are any major differences.
-
-```{r lead_death_by_gender}
+```{r lead_death_by_race+gender, message = FALSE}
 
 labels_top <- c("Neoplasms", "Circulatory Diseases")
 names(labels_top) <- death_cause
 
 filter(df, ICD.Chapter.Code %in% death_cause) %>%
-  age_adjust(ICD.Chapter.Code, Year, Race.Code) %>%
-  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code)) +
-  geom_line() +
-  geom_point() +
-  facet_wrap(~ICD.Chapter.Code, labeller = labeller(ICD.Chapter.Code = labels_top))+
-  ylab("Age Adjusted Crude Death Rate") +
-  labs(title = "Top Causes of Death Over Time") +
-  scale_color_discrete(labels = race_key$Race, name = "Race")
-```
-
-Overall there are differences in death rate based on race, but they're largely the same across time. Where there are declines in death by a certain cause, they seem to affect each race category in a more or less similar way. When split by race, the 
-
-```{r lead_death_by_race}
-
-death_cause <- c("I00-I99", "C00-D48")
-
-filter(df, ICD.Chapter.Code %in% death_cause) %>%
-  age_adjust(ICD.Chapter.Code, Year, Race.Code) %>%
+  age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
   ggplot(
     aes(
-      x = Year,
-      y = Crude.Rate.Adjusted,
-      shape = ICD.Chapter.Code,
-      color = Race.Code
+      x = Year, 
+      y = Crude.Rate.Adjusted, 
+      color = Race.Code, 
+      shape = Gender.Code, 
+      linetype = Gender.Code
     )
   ) +
   geom_line() +
   geom_point() +
-  ylab("Age Adjusted Crude Death Rate") +
-  labs(title = "Top Causes of Death Over Time") +
-  scale_shape_discrete(
-    labels = icd_key$ICD.Chapter[
-      icd_key$ICD.Chapter.Code %in% death_cause
-    ],
-    name = "Cause of Death"
+  facet_wrap(
+    facets = ~ICD.Chapter.Code, 
+    labeller = labeller(ICD.Chapter.Code = labels_top)
   ) +
-  scale_color_discrete(labels = race_key$Race, name = "Race")
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Top Causes of Death Over Time by Race and Gender") +
+  scale_color_discrete(labels = race_key$Race, name = "Race") +
+  scale_shape_discrete(labels = gender_key$Gender, name = "Gender") +
+  scale_linetype_manual(
+    labels = gender_key$Gender, 
+    name = "Gender", 
+    values = c(1, 3)
+  ) +
+  guides(colour=guide_legend(override.aes=list(shape=NA)))
 ```
 
-Unsurprisingly, given white people tend to have better access to health care, they also have the lowest death rates for both ICD codes. What's more interesting, however, is how the difference in rate between neoplasms and circulatory diseases changes between races. For white people, the death rate from circulatory disease has fallen over the years to the point where it's no longer dramatically higher. For people in the Asian or Pacific Islander categories, however, the death rate for circulatory diseases is still massively greater than for neoplasms, even in 2016. The actual slopes for each race look about the same, however, so it doesn't seem like changes in medicine over this time period disproportionately affected white people more than other races, but at the same time the factors causing non-white people to have higher overall death rates don't seem to have been improved either.
+There are differences in death rate based on race, with Black and African American people having the highest death rates for both neoplasms and circulatory disease, but Asian people and Pacific Islanders having the lowest. In general the death rates are also higher for men than women. The overall reduction over time is fairly similar for each group though, indicating that while there is definitely an inequality in death rates, the decline in death rates doesn't affect minority groups disproportionately less than white people. In fact, the slopes for neoplasms appear to be steeper for groups that had higher initial death rates. This may indicate that for neoplasms the amount of inequality is starting to lessen over time, though it would help to see more recent data in order to see if this is a lasting trend.
+
+For circulatory diseases, the shape of the data is starting to look a lot more logarithmic now, with a fairly clear trend towards the decline leveling off. While the death rate for Black or African American men has declined sharply, the curve flattens out dramatically around 2011, keeping it well above the other groups. 
 
 ### Have common causes of death changed over time?
 
-```{r common_cause_by_year}
+Most of the ICD chapters showed a total number of deaths in the range of millions, so next I want to take a general look at all of those.
+
+```{r common_cause_by_year, message = FALSE}
 death_cause <- total_deaths$ICD.Chapter.Code[
   which(
-    total_deaths$Deaths > 999999 & 
-      total_deaths$Deaths < 10000000
+    x = total_deaths$Deaths > 999999 & total_deaths$Deaths < 10000000
   )
 ]
 
@@ -390,64 +415,97 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Common Causes of Death Over Time") +
   scale_color_discrete(
-    labels = icd_key$ICD.Chapter[
-      icd_key$ICD.Chapter.Code %in% death_cause
-    ],
+    labels = icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause],
     name = "Cause of Death"
   ) +
   scale_linetype_discrete(
-    labels = icd_key$ICD.Chapter[
-      icd_key$ICD.Chapter.Code %in% death_cause
-    ],
+    labels = icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause],
     name = "Cause of Death"
   ) +
   scale_shape_manual(
-    labels = icd_key$ICD.Chapter[
-      icd_key$ICD.Chapter.Code %in% death_cause
-    ],
+    labels = icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause],
     name = "Cause of Death",
     values = c(15, 16, 17, 15, 16, 17, 15, 16)
   )
 ```
 
-Most of these death rates are fairly steady over time, but deaths due to nervous system diseases and mental disorders show a general trend of increasing, and there's a spike in deaths by external causes around 2014-2015. Coming from a psychology background, I'm most interested here in the deaths from mental disorders, which suddenly start to decline around 2013. Again, I think I'd be useful to break this down by race and gender to see if the trend is coming from any particular segment of the population.
+Most of these are fairly steady over time. Interestingly, death due to mental diseases shows a steady incline up to about 2013, after which it starts to decline again. Deaths from nervous system diseases, likewise, increase after that point. The other point of interest is deaths from external causes show a sudden massive uptick between 2014 and 2015, and continue to rise on this new, very steep slope into 2016.
 
-#### Do deaths by mental disorder differ by race and gender?
+#### Why is there a tradeoff between deaths from mental disorders and nervous system diseases?
 
-```{r mental_disorder_breakdown}
-filter(df, ICD.Chapter.Code == "F01-F99") %>%
-  age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
-  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+There's no guarantee these are related, but the difference between a mental disorder, as classified by the ICD 10 and a nervous system disease is a very fine line. In fact, several forms of dementia, such as dementia from Alzheimer's or Parkinson's disease are listed under mental disorders, but with a reference to codes in the nervous system diseases chapter for the underlying illnesses themselves. The divergence also appears immediately after the publication of the 5th edition of the Diagnostic and Statistical Manual of Mental Disorders (DSM-V). My guess would be that changes in the DSM-V caused a shift in reporting, where deaths were more often classified as being due to nervous system disorders rather than due to dementia stemming from those disorders. In general dementia from organic causes, such as nervous system diseases is in the F01-F09 sub-chapter of the ICD 10. It looks like the corresponding sub-chapters for nervous system diseases include Pick's disease (G31), Huntington's Disease(G10), and Parkinson's Disease (G20), so the sub-chapters we want there are G10-G14, G20-G25, and G30-G31.
+
+```{r mental_disorder_breakdown, message = FALSE}
+death_cause <- c("F01-F09","G10-G14", "G20-G25", "G30-G31")
+
+filter(df, ICD.Sub.Chapter.Code %in% death_cause) %>%
+  age_adjust(ICD.Chapter.Code, ICD.Sub.Chapter.Code, Year) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Sub.Chapter.Code)) +
   geom_line() +
   geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
-  labs(title = "Deaths from Mental Disorder by Race and Gender") +
-  scale_color_discrete(labels = race_key$Race, name = "Race") +
-  scale_shape_discrete(labels = gender_key$Gender, name = "Gender")
+  labs(
+    title = "Deaths from Organic Mental Disorders and Nervous System Disorders"
+  ) +
+  scale_color_discrete(name = "ICD Sub-Chapters"
+  )
 ```
 
-As it happens, there are a lot of interesting elements in this figure. In general women are more likely to report suffering from mental illness than men, but in terms of death from mental disorder, it looks like men who are Asian or Pacific Islanders have higher death rates from mental illness than women. The same is true for American Indians and Alaska Natives. For Black or African American people, the death rate from mental illness for men and women is about the same until 2005, where the death rate for women starts to rise more rapidly than for men. Around 2010 we see something similar for white people, where the death rate for women grows over that of men for a time. This increase is most notable for white people, but the death rate for women from mental illness seems to increases, compared to the male death rate, for all races around this time. However, death from mental disease is a fairly broad category. I suspect that answers to exactly what is going on here might be clearer if we looked at the individual causes of death. I don't have those as part of the present dataset, but I can query that data for another analysis.
+The pattern of interest definitely seems to be related specifically to sub-chapter G30-G31, which includes Alzheimer's disease and Pick's disease. As in the overall graph by chapter, around 2013 the number of deaths in the ICD sub-chapter that includes dementia from nervous system diseases starts to decline, while at the same time deaths from Alzheimer's and Pick's disease starts to rise. That definitely lines up with the idea that there wasn't a major change in actual causes of death after 2013, just a change in how deaths were classified. The reason the pattern is seen in the Alzheimer's and Pick's disease group, but not the others, is probably simply due to Alzheimer's disease being overwhelmingly more common, and thus making up the majority of the data.
 
-Finally I want to look into that external cause of death spike we saw.
+#### How have deaths from external causes changed over time?
 
-#### Do deaths by external causes differ by race and gender?
+External causes is a broad category that includes essentially anything that isn't a disease. Because of that, I suspect this is an area where we're particularly likely to see differences based on things like socio-economic status, so I want to start by breaking the data down by race and gender.
 
-```{r external_cause_breakdown}
-filter(df, ICD.Chapter.Code == "V01-Y89") %>%
+```{r external_cause_race+gender, message = FALSE}
+labels_gender <- c(`F` = "Female", `M` = "Male")
+
+
+filter(df, ICD.Chapter.Code == "V01-Y98") %>%
   age_adjust(ICD.Chapter.Code, Year, Race.Code, Gender.Code) %>%
-  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code, shape = Gender.Code)) +
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = Race.Code)) +
+  facet_wrap(~Gender.Code, labeller = labeller(Gender.Code = labels_gender))+
   geom_line() +
   geom_point() +
   ylab("Age Adjusted Crude Death Rate") +
   labs(title = "Deaths from External Causes by Race and Gender") +
-  scale_color_discrete(labels = race_key$Race, name = "Race") +
-  scale_shape_discrete(labels = gender_key$Gender, name = "Gender")
+  scale_color_discrete(labels = race_key$Race, name = "Race")
 ```
 
-From this figure we can see that the spike in deaths from external causes is almost entirely accounted for by non-white men. Non-white men not only have higher death rates from external causes overall, but the sudden increase from around 2014 doesn't happen for women, or white men. Again, it's hard to say exactly why this happens from the data we have, but a clear trend is visible.
+There are some differences due to race, most notably a dramatically lower rate of death via external cause for the Asian or Pacific Islander group. In terms of gender, the massive uptick in death rate for external causes seems to be accounted for almost entirely by the male groups, except for the Asian or Pacific Islander male group. 
+
+#### What causes the increase in deaths from external causes for men after 2014?
+
+To try and work out why there's a sudden increase in death from external causes for men, I want to break down the data by gender and sub-chapter to try and see what specific cause is behind this. 
+
+```{r external_cause_subchapter, message = FALSE}
+filter(df, ICD.Chapter.Code == "V01-Y98") %>%
+  age_adjust(ICD.Sub.Chapter.Code, Year, Gender.Code) %>%
+  ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Sub.Chapter.Code)) +
+  facet_wrap(~Gender.Code, labeller = labeller(Gender.Code = labels_gender))+
+  geom_line() +
+  geom_point() +
+  ylab("Age Adjusted Crude Death Rate") +
+  labs(title = "Deaths from External Causes by Category and Gender") +
+  scale_color_discrete(
+    labels = str_wrap(
+      icd_sub_key$ICD.Sub.Chapter[icd_sub_key$ICD.Chapter.Code == "V01-Y98"], 
+      20
+    ), 
+    name = "Death Cause"
+  )
+```
+
+Unfortunately the dramatic uptick in male deaths falls into the "Other" category, which contains well over a hundred unique causes of death, including falls, accidents involving machinery, animal attacks, and radiation exposure. With such a broad range, there's no telling if the sudden spike in death rate for men in this category is due to a single factor, or multiple external factors. I'll likely do another analysis later on that dives into just the external cause of death information to get more answers.
+
+Of additional interest is the decrease in death rate for men due to transport accidents after 2007. I wasn't able to find any immediately obvious answers for what might have caused this, but it might be worth further investigation to try and determine if there were any likely laws, safety updates, or policy changes that caused this decline so that similar measures can be used to further reduce the death rate. There is a slight dip for women as well in the same time period, but much less noticeable. This is likely due to women having much lower death rate from transport accidents overall. Any interventions or changes in transportation safety would have had a larger impact on those more likely to suffer accidents in the first place.
 
 ## Summary
 
-From this dataset, it's clear to see that, in spite of improvements in medicine over the past 20 odd years, there is still a fair deal of racial and gender-based inequality when it comes to causes of mortality. We also do see increases in death rates for certain kinds of death. However, it should be noted that every dies of something eventually. A decrease in deaths from neoplasms and heart disease might lead to an increase in death by mental disorder, as people who previously would have died from heart attack of cancer find themselves living long enough to die of dementia or other age-related causes that fall under the umbrella of mental disease.
+From this dataset, it's clear to see that there is still a large deal of racial and gender inequality in causes of death. This is especially evident in racial inequality for circulatory diseases and neoplasms. However, there is some slight evidence to show that the inequality is starting to become less severe when it comes to death due to neoplasms. There has been a clear reduction in death rate due to neoplasms and circulatory disease for all groups, though the decline in circulatory disease may be starting to level out. Overall death rates are highest for Black or African American people, and lowest for people who are Asian or Pacific Islanders. This is in line with a [2002 report by the Population Reference Bureau](https://www.prb.org/resources/racial-and-ethnic-differences-in-u-s-mortality/) and the trends do not appear to have changed since that time.
 
-While I wasn't able to get detailed information about these trends from the current dataset, I've also narrowed down questions for further examination. It would be more convienient to have all the causes of death in this dataset, rather than having to query for more information. However, the CDC portal only allows for 75,000 results at a time, so using a general dataset to narrow down more specific questions to query is worth the effort, as it saves the time of having to send and merge a massive number of queries to obtain information on all individual causes of death for all races and genders in every age group across all years.
+There has also been a rise in the Alzheimer's and Pick's disease death rates, likely due primarily to Alzheimer's disease. While the rise in deaths due to Alzheimer's disease appears to have jumped dramatically after 2013, it's likely due to deaths that were formerly classified as being due to dementia now being classified as death due to Alzheimer's disease. With this in mind, the increase in death due to Alzheimer's disease appears to be a fairly steady trend.  
+
+Finally, there is a dramatic uptick in deaths due to external causes after 2014. This uptick is almost entirely accounted for by men who are not Asian or Pacific Islanders dying from causes classified as "other". Inspection of more detailed data will be needed to try and tease out the trends behind this. Additionally, there was a dramatic drop in death rate from transport accidents after 2007 for men. The exact cause is unknown, but potentially of further interest. If the cause was due to a new policy of some kind, replication of that policy could further lower accident rates.
+
+Overall, while this analysis does answer the original question it set out to examine, I feel like it's raised more questions than answers, which I consider to be about the perfect combination. There's little more satisfying than finding the answers to your questions come with new questions, and new depths to explore, so I look forward to coming back to this area and trying to see not only what answers I can come up with, but what new questions as well.
