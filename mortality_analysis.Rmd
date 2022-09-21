@@ -16,7 +16,7 @@ Recently in conversation, a relative mentioned anecdotally how heart complicatio
 
 To start with, I went to the [CDC compressed mortality dataset](https://catalog.data.gov/dataset/cdc-wonder-mortality-underlying-cause-of-death) and queried the 1999-2016 database. Each database organizes cause of death based on the International Classification of Disease (ICD), which has updated several times over the years. While older data is available, the classification system would be slightly different the further back I went, and I'd have to try to find some way of equating them all. Fortunately for my purposes, the 1999 to 2016 data, which uses the 10th edition of the ICD, should be plenty. I queried the system for information organized by ICD sub-chapter, year, age, race, and gender. 
 
-For this analysis, I'm not actually interested in examining the data by age, but I still need to query the age data in order to create age adjusted death rates, which is what the CDC recommends using when comparing multiple populations. The reason for this is that some causes of death are far more common for certain age groups. Various illnesses are common for older adults, but rare for children, or vice-versa. Alternatively, some things are much more dangerous depending on age group. For example, chicken-pox is considered fairly harmless for children, but can cause severe complications in adults. If we had a population with relatively few children, but lots of older adults, we might expect to see a much higher rate of death for chicken-pox, even if the rate of chicken-pox is exactly the same as a more child-heavy group. In order to account for this, age adjusted mortality rates take a weighted average of different age groups in order to transform each population into a standardized population, where the proportions of each age group are the same. Currently the CDC uses the estimated population for the year 2000 as their standardized population. The estimates and the related age weights can be found [here](https://wonder.cdc.gov/wonder/help/cmf.html#2000%20Standard%20Population). 
+For this analysis, I'm not actually interested in examining the data by age, but I still need to query the age data in order to create age-adjusted death rates, which is what the CDC recommends using when comparing multiple populations. The reason for this is that some causes of death are far more common for certain age groups. Various illnesses are common for older adults, but rare for children, or vice-versa. Alternatively, some things are much more dangerous depending on age group. For example, chicken-pox is considered fairly harmless for children, but can cause severe complications in adults. If we had a population with relatively few children, but lots of older adults, we might expect to see a much higher rate of death for chicken-pox, even if the rate of chicken-pox is exactly the same as a more child-heavy group. In order to account for this, age-adjusted mortality rates take a weighted average of different age groups in order to transform each population into a standardized population, where the proportions of each age group are the same. Currently the CDC uses the estimated population for the year 2000 as their standardized population. The estimates and the related age weights can be found [here](https://wonder.cdc.gov/wonder/help/cmf.html#2000%20Standard%20Population). 
 
 Unfortunately, the CDC Wonder query system won't output any query that produces more than 75,000 results. In order to get all the data I wanted, I had to submit a separate query for each individual age range, meaning I actually have 14 datasets to work with.
 
@@ -259,7 +259,7 @@ Now that my dataframe is clean and easy to work with, I can start having some fu
 
 ## Exploritory Analysis
 
-As I mentioned earlier, I want to look at age adjusted death rates, rather than just the crude death rate. To calculate the age adjusted mortality rate itself is fairly simple. You multiply the crude death rate for each individual age group by the age weight, and then add each of those results together. When I queried the data, I could have actually had the age adjusted mortality rates included but, as with the crude rate, I want to define the groups of interest myself and calculate their specific age adjusted rates.
+As I mentioned earlier, I want to look at age-adjusted death rates, rather than just the crude death rate. To calculate the age-adjusted mortality rate itself is fairly simple. You multiply the crude death rate for each individual age group by the age weight, and then add each of those results together. When I queried the data, I could have actually had the age-adjusted mortality rates included but, as with the crude rate, I want to define the groups of interest myself and calculate their specific age-adjusted rates.
 
 The first thing I want to do is add the age weights to the age group dataframe I made earlier. In fact, because the age group and age group code are so similar, and I'm not planning to report on any age values, the main reason I made this dataframe to begin with was to have a place to put these age weights. The only other reason to have it is as a reminder that the age group code "1" actually means "<1".
 
@@ -278,7 +278,7 @@ age_key$Age.Weight <- c(0.013818, # <1
 )
 ```
 
-If I'm going to make a lot of different figures based on different groupings of people, I'm also going to want a way to easily and quickly calculate the age adjusted mortality rates by group. That means I need to write a function that outputs just that. It should allow me to work out the age adjusted mortality rates for the populations I want in just a few commands and pipe the results into a figure.
+If I'm going to make a lot of different figures based on different groupings of people, I'm also going to want a way to easily and quickly calculate the age-adjusted mortality rates by group. That means I need to write a function that outputs just that. It should allow me to work out the age-adjusted mortality rates for the populations I want in just a few commands and pipe the results into a figure.
 
 ```{r age_adjustment_function}
 
@@ -316,7 +316,7 @@ age_adjust <- function(X, ...){
 
 ### What are the leading causes of death from 1999 to 2016?
 
-The first thing I want to know is what the top overall causes of death are. For this, I'm not going to use the age adjusted rates. I just want to get an idea of what the most common causes of death are across this entire time-span. To do that, I'll just sum the deaths by cause across the dataframe. Because there are over a hundred sub-chapters in the ICD, I just want to look at the main chapters at first to get a general picture.
+The first thing I want to know is what the top overall causes of death are. For this, I'm not going to use the age-adjusted rates. I just want to get an idea of what the most common causes of death are across this entire time-span. To do that, I'll just sum the deaths by cause across the dataframe. Because there are over a hundred sub-chapters in the ICD, I just want to look at the main chapters at first to get a general picture.
 
 ```{r total_deaths_by_cause, message = FALSE}
 total_deaths <- df %>%
@@ -344,7 +344,7 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Chapter.Code)) +
   geom_line() +
   geom_point() +
-  ylab("Age Adjusted Crude Death Rate") +
+  ylab("Age-Adjusted Crude Death Rate") +
   labs(title = "Top Causes of Death Over Time") +
   scale_color_discrete(
     labels = icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause],
@@ -380,7 +380,7 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
     facets = ~ICD.Chapter.Code, 
     labeller = labeller(ICD.Chapter.Code = labels_top)
   ) +
-  ylab("Age Adjusted Crude Death Rate") +
+  ylab("Age-Adjusted Crude Death Rate") +
   labs(title = "Top Causes of Death Over Time by Race and Gender") +
   scale_color_discrete(labels = race_key$Race, name = "Race") +
   scale_shape_discrete(labels = gender_key$Gender, name = "Gender") +
@@ -412,7 +412,7 @@ filter(df, ICD.Chapter.Code %in% death_cause) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Chapter.Code)) +
   geom_line() +
   geom_point(aes(shape = ICD.Chapter.Code)) + 
-  ylab("Age Adjusted Crude Death Rate") +
+  ylab("Age-Adjusted Crude Death Rate") +
   labs(title = "Common Causes of Death Over Time") +
   scale_color_discrete(
     labels = icd_key$ICD.Chapter[icd_key$ICD.Chapter.Code %in% death_cause],
@@ -443,7 +443,7 @@ filter(df, ICD.Sub.Chapter.Code %in% death_cause) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Sub.Chapter.Code)) +
   geom_line() +
   geom_point() +
-  ylab("Age Adjusted Crude Death Rate") +
+  ylab("Age-Adjusted Crude Death Rate") +
   labs(
     title = "Deaths from Organic Mental Disorders and Nervous System Disorders"
   ) +
@@ -467,7 +467,7 @@ filter(df, ICD.Chapter.Code == "V01-Y98") %>%
   facet_wrap(~Gender.Code, labeller = labeller(Gender.Code = labels_gender))+
   geom_line() +
   geom_point() +
-  ylab("Age Adjusted Crude Death Rate") +
+  ylab("Age-Adjusted Crude Death Rate") +
   labs(title = "Deaths from External Causes by Race and Gender") +
   scale_color_discrete(labels = race_key$Race, name = "Race")
 ```
@@ -485,7 +485,7 @@ filter(df, ICD.Chapter.Code == "V01-Y98") %>%
   facet_wrap(~Gender.Code, labeller = labeller(Gender.Code = labels_gender))+
   geom_line() +
   geom_point() +
-  ylab("Age Adjusted Crude Death Rate") +
+  ylab("Age-Adjusted Crude Death Rate") +
   labs(title = "Deaths from External Causes by Category and Gender") +
   scale_color_discrete(
     labels = str_wrap(
