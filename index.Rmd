@@ -7,8 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(rstudioapi)
-setwd(dirname(getActiveDocumentContext()$path))
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 renv::restore()
 ```
 
@@ -28,6 +27,8 @@ To start with, I'll have to merge my 14 datasets into a single dataframe. After 
 
 ```{r load_merge, message = FALSE}
 library(tidyverse)
+library(knitr)
+library(kableExtra)
 
 # Load data by age
 
@@ -85,10 +86,15 @@ It looks like I have several NA values. The number of NA values in Year.Code, Ye
 age_group_na <- subset(df, subset = is.na(df$Age.Group.Code))
 year_na <- subset(df, subset = is.na(df$Year))
 
-knitr::kable(head(age_group_na))
-knitr::kable(head(year_na))
-```
+kable(age_group_na, style = "html") %>%
+    kable_styling() %>%
+  scroll_box(width = "100%", height = "400px")
 
+kable(year_na, style = "html") %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "400px")
+```  
+  
 It looks like the Notes column of each query I made contains information about the dataset and the query used to generate it. Every other column is either empty or NA for those rows. For some reason the Age.Group.Code column came back as NA for one query but blank for all the others, which is why it had only 60 NA values. This means I can simply remove all the NA values from the main dataframe, as they all contain no data. It's a little concerning that this happened, and makes me wonder if I accidentally changed something on one of my 14 queries. Fortunately, the notes fields for these NA values includes a description of each query, and I can verify that the query structure of the oddball query is the same as all the other ones. However, the oddball query is for the <1 year old age group. The query system allows for examination of further infant ranges inside the <1 group, so my best guess is that the existence of this subset of age groups inside the <1 age group is the cause of the minor difference in how the query system output the data here. 
 
 Regardless, it looks like I should simply be able to delete these rows, as they contain no actual data. The fact that they contain information on the nature of each exact query, and some of the documentation for the dataset is useful. Conveniently, having just subset those rows into a new dataframe, I'll still have access to them if I need them, even after removing them from the main dataframe.
@@ -325,7 +331,9 @@ total_deaths <- df %>%
   summarise(Deaths = sum(Deaths)) %>%
   arrange(desc(Deaths))
 
-knitr::kable(total_deaths)
+kable(total_deaths) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "600px")
 ```
 
 Diseases of the circulatory system and neoplasms lead the other top causes of death by an order of magnitude. This isn't too surprising, as those are the chapters that include cancer and heart disease. Our least common causes of death include diseases of the eye, ear, deaths from codes reserved for special purposes, pregnancy and childbirth, and skin diseases. I'm actually quite surprised to see pregnancy and childbirth as low on the list as they are, given how dangerous childbirth has historically been.
@@ -336,7 +344,7 @@ This table also gives me some information on how I want to break down my figures
 
 This whole project was started by a discussion of how heart disease has become more treatable, so naturally I want to delve deeper into the death rate for circulatory disease immediately. Neoplasms works well as a cause of death to graph alongside it, even if it weren't the only other one in the same order of magnitude. Treating cancer is extremely difficult, and the subject of a massive amount of research, so it'll be good to see how they compare next to each other.
 
-```{r cause_by_year, message = FALSE}
+```{r cause_by_year, message = FALSE, fig.width = 8.5, fig.height = 6}
 death_cause <- c("C00-D48", "I00-I99")
 
 filter(df, ICD.Chapter.Code %in% death_cause) %>%
@@ -358,7 +366,7 @@ There's an overall decline for both causes, but it's much steeper for circulator
 
 Earlier I'd mentioned race and gender as potential factors, so it may be interesting to see if these factors interact with the data.
 
-```{r lead_death_by_race+gender, message = FALSE}
+```{r lead_death_by_race+gender, message = FALSE, fig.width = 8.5, fig.height = 6}
 
 labels_top <- c("Neoplasms", "Circulatory Diseases")
 names(labels_top) <- death_cause
@@ -400,7 +408,7 @@ For circulatory diseases, the shape of the data is starting to look a lot more l
 
 Most of the ICD chapters showed a total number of deaths in the range of millions, so next I want to take a general look at all of those.
 
-```{r common_cause_by_year, message = FALSE}
+```{r common_cause_by_year, message = FALSE, fig.width = 8.5, fig.height = 6}
 death_cause <- total_deaths$ICD.Chapter.Code[
   which(
     x = total_deaths$Deaths > 999999 & total_deaths$Deaths < 10000000
@@ -435,7 +443,7 @@ Most of these are fairly steady over time. Interestingly, death due to mental di
 
 There's no guarantee these are related, but the difference between a mental disorder, as classified by the ICD 10 and a nervous system disease is a very fine line. In fact, several forms of dementia, such as dementia from Alzheimer's or Parkinson's disease, are listed under mental disorders but with a reference to codes in the nervous system diseases chapter for the underlying illnesses themselves. The divergence also appears immediately after the publication of the 5th edition of the _Diagnostic and Statistical Manual of Mental Disorders_ (DSM-V). My guess would be that changes in the DSM-V caused a shift in reporting, where deaths were more often classified as being due to nervous system disorders rather than due to dementia stemming from those disorders. In general dementia from organic causes, such as nervous system diseases, is in the F01-F09 sub-chapter of the ICD 10. It looks like the corresponding sub-chapters for nervous system diseases include Pick's disease (G31), Huntington's Disease(G10), and Parkinson's Disease (G20), so the sub-chapters we want there are G10-G14, G20-G25, and G30-G31.
 
-```{r mental_disorder_breakdown, message = FALSE}
+```{r mental_disorder_breakdown, message = FALSE, fig.width = 8.5, fig.height = 6}
 death_cause <- c("F01-F09","G10-G14", "G20-G25", "G30-G31")
 
 filter(df, ICD.Sub.Chapter.Code %in% death_cause) %>%
@@ -457,7 +465,7 @@ The pattern of interest definitely seems to be related specifically to sub-chapt
 
 External causes is a broad category that includes essentially anything that isn't a disease. Because of that, I suspect this is an area where we're particularly likely to see differences based on things like socio-economic status, so I want to start by breaking the data down by race and gender.
 
-```{r external_cause_race+gender, message = FALSE}
+```{r external_cause_race+gender, message = FALSE, fig.width = 8.5, fig.height = 6}
 labels_gender <- c(`F` = "Female", `M` = "Male")
 
 
@@ -478,7 +486,7 @@ There are some differences due to race, most notably a dramatically lower rate o
 
 To try and work out why there's a sudden increase in death from external causes for men, I want to break down the data by gender and sub-chapter to try and see what specific cause is behind this. 
 
-```{r external_cause_subchapter, message = FALSE}
+```{r external_cause_subchapter, message = FALSE, fig.width = 8.5, fig.height = 6}
 filter(df, ICD.Chapter.Code == "V01-Y98") %>%
   age_adjust(ICD.Sub.Chapter.Code, Year, Gender.Code) %>%
   ggplot(aes(x = Year, y = Crude.Rate.Adjusted, color = ICD.Sub.Chapter.Code)) +
